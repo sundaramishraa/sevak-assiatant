@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SEVAK - Login</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+      background: linear-gradient(135deg, #1a237e 0%, #0d47a1 50%, #01579b 100%);
+    }
+
+    /* Animated Background Text */
+    .bg-text-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .floating-text {
+      position: absolute;
+      color: rgba(255, 255, 255, 0.03);
+      font-size: 120px;
+      font-weight: bold;
+      white-space: nowrap;
+      animation: float-text 20s linear infinite;
+      text-transform: uppercase;
+      letter-spacing: 20px;
+    }
+
+    .floating-text:nth-child(1) { top: 10%; animation-duration: 25s; animation-delay: 0s; }
+    .floating-text:nth-child(2) { top: 30%; animation-duration: 30s; animation-delay: -5s; }
+    .floating-text:nth-child(3) { top: 50%; animation-duration: 22s; animation-delay: -10s; }
+    .floating-text:nth-child(4) { top: 70%; animation-duration: 28s; animation-delay: -15s; }
+    .floating-text:nth-child(5) { top: 90%; animation-duration: 24s; animation-delay: -7s; }
+
+    @keyframes float-text {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100vw); }
+    }
+
+    /* Glass Particles */
+    .particles {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .particle {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      animation: float-up 15s infinite;
+      backdrop-filter: blur(2px);
+    }
+
+    .particle:nth-child(1) { width: 60px; height: 60px; left: 10%; animation-delay: 0s; animation-duration: 12s; }
+    .particle:nth-child(2) { width: 80px; height: 80px; left: 30%; animation-delay: 2s; animation-duration: 18s; }
+    .particle:nth-child(3) { width: 40px; height: 40px; left: 50%; animation-delay: 4s; animation-duration: 15s; }
+    .particle:nth-child(4) { width: 100px; height: 100px; left: 70%; animation-delay: 1s; animation-duration: 20s; }
+    .particle:nth-child(5) { width: 50px; height: 50px; left: 90%; animation-delay: 3s; animation-duration: 14s; }
+    .particle:nth-child(6) { width: 70px; height: 70px; left: 20%; animation-delay: 5s; animation-duration: 16s; }
+
+    @keyframes float-up {
+      0% { 
+        transform: translateY(100vh) rotate(0deg); 
+        opacity: 0;
+      }
+      10% { opacity: 0.3; }
+      90% { opacity: 0.3; }
+      100% { 
+        transform: translateY(-100px) rotate(360deg); 
+        opacity: 0;
+      }
+    }
+
+    /* Glass Container */
+    .glass-container {
+      position: relative;
+      z-index: 10;
+      width: 90%;
+      max-width: 480px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 24px;
+      padding: 50px 40px;
+      box-shadow: 
+        0 25px 50px rgba(0, 0, 0, 0.3),
+        0 0 0 1px rgba(255, 255, 255, 0.1) inset,
+        0 0 100px rgba(255, 107, 0, 0.1) inset;
+      animation: slide-up 0.6s ease-out;
+    }
+
+    @keyframes slide-up {
+      from { 
+        opacity: 0; 
+        transform: translateY(30px);
+      }
+      to { 
+        opacity: 1; 
+        transform: translateY(0);
+      }
+    }
+
+    /* Shine Effect */
+    .glass-container::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(
+        45deg,
+        transparent 30%,
+        rgba(255, 255, 255, 0.1) 50%,
+        transparent 70%
+      );
+      transform: rotate(45deg);
+      animation: shine 6s infinite;
+      pointer-events: none;
+    }
+
+    @keyframes shine {
+      0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+      100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+    }
+
+    /* Logo Section */
+    .logo-section {
+      text-align: center;
+      margin-bottom: 40px;
+      position: relative;
+    }
+
+    .logo-icon {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #FF6B00, #ff8533);
+      border-radius: 50%;
+      margin: 0 auto 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      box-shadow: 
+        0 10px 30px rgba(255, 107, 0, 0.4),
+        0 0 0 4px rgba(255, 255, 255, 0.1);
+      animation: pulse 2s infinite;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .logo-icon::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(45deg, transparent, rgba(255,255,255,0.3), transparent);
+      transform: rotate(45deg);
+      animation: icon-shine 3s infinite;
+    }
+
+    @keyframes icon-shine {
+      0% { transform: translateX(-100%) rotate(45deg); }
+      100% { transform: translateX(100%) rotate(45deg); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 10px 30px rgba(255, 107, 0, 0.4), 0 0 0 4px rgba(255, 255, 255, 0.1); }
+      50% { transform: scale(1.05); box-shadow: 0 15px 40px rgba(255, 107, 0, 0.6), 0 0 0 6px rgba(255, 255, 255, 0.2); }
+    }
+
+    .logo-text {
+      font-size: 32px;
+      font-weight: bold;
+      color: white;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      letter-spacing: 2px;
+    }
+
+    .logo-subtitle {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+      margin-top: 8px;
+      letter-spacing: 1px;
+    }
+
+    /* Tab Buttons */
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 30px;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 6px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .tab {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.7);
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+      font-size: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .tab:hover {
+      color: white;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .tab.active {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .tab.active::before {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, #FF6B00, transparent);
+      animation: tab-glow 2s infinite;
+    }
+
+    @keyframes tab-glow {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+
+    /* Form Styling */
+    .form-container { position: relative; }
+
+    .input-group {
+      position: relative;
+      margin-bottom: 24px;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 16px 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      color: white;
+      font-size: 15px;
+      transition: all 0.3s ease;
+      outline: none;
+    }
+
+    .input-group input::placeholder {
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .input-group input:focus {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: #FF6B00;
+      box-shadow: 0 0 20px rgba(255, 107, 0, 0.3);
+    }
+
+    .input-group label {
+      position: absolute;
+      left: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 15px;
+      pointer-events: none;
+      transition: all 0.3s ease;
+    }
+
+    .input-group input:focus + label,
+    .input-group input:not(:placeholder-shown) + label {
+      top: -10px;
+      left: 12px;
+      font-size: 12px;
+      color: #FF6B00;
+      background: rgba(26, 35, 126, 0.8);
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    /* Submit Button */
+    .submit-btn {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #FF6B00, #ff8533);
+      border: none;
+      border-radius: 12px;
+      color: white;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
+      box-shadow: 0 10px 30px rgba(255, 107, 0, 0.4);
+      margin-top: 10px;
+    }
+
+    .submit-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 15px 40px rgba(255, 107, 0, 0.5);
+    }
+
+    .submit-btn:active {
+      transform: translateY(0);
+    }
+
+    .submit-btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+      transition: 0.5s;
+    }
+
+    .submit-btn:hover::before {
+      left: 100%;
+    }
+
+    /* Messages */
+    .message {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      text-align: center;
+      animation: shake 0.5s ease;
+      display: none;
+    }
+
+    .message.error {
+      display: block;
+      background: rgba(211, 47, 47, 0.2);
+      color: #ffcdd2;
+      border: 1px solid rgba(211, 47, 47, 0.3);
+    }
+
+    .message.success {
+      display: block;
+      background: rgba(56, 142, 60, 0.2);
+      color: #c8e6c9;
+      border: 1px solid rgba(56, 142, 60, 0.3);
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-10px); }
+      75% { transform: translateX(10px); }
+    }
+
+    /* Admin Info */
+    .admin-info {
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      text-align: center;
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 13px;
+    }
+
+    .admin-info strong {
+      color: rgba(255, 255, 255, 0.9);
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    /* Hidden utility */
+    .hidden { display: none !important; }
+
+    /* Responsive */
+    @media (max-width: 480px) {
+      .glass-container { padding: 40px 24px; }
+      .floating-text { font-size: 60px; }
+      .logo-text { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Animated Background -->
+  <div class="bg-text-container">
+    <div class="floating-text">Civic Duty</div>
+    <div class="floating-text">Serve The People</div>
+    <div class="floating-text">Smart City</div>
+    <div class="floating-text">Digital India</div>
+    <div class="floating-text">सेवक SEVAK</div>
+  </div>
+
+  <!-- Floating Particles -->
+  <div class="particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
+
+  <!-- Glass Login Container -->
+  <div class="glass-container">
+    <!-- Logo -->
+    <div class="logo-section">
+      <div class="logo-icon">🏛️</div>
+      <div class="logo-text">सेवक SEVAK</div>
+      <div class="logo-subtitle">AI-Powered Civic Portal</div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" onclick="showLogin()">Login</button>
+      <button class="tab" onclick="showSignup()">Sign Up</button>
+    </div>
+
+    <!-- Login Form -->
+    <div id="loginForm" class="form-container">
+      <div class="input-group">
+        <input type="email" id="loginEmail" placeholder=" " required>
+        <label>Email Address</label>
+      </div>
+      <div class="input-group">
+        <input type="password" id="loginPassword" placeholder=" " required>
+        <label>Password</label>
+      </div>
+      <button class="submit-btn" onclick="login()">
+        Login to Dashboard →
+      </button>
+      <div id="loginError" class="message"></div>
+    </div>
+
+    <!-- Signup Form -->
+    <div id="signupForm" class="form-container hidden">
+      <div class="input-group">
+        <input type="text" id="signupUsername" placeholder=" " required>
+        <label>Full Name</label>
+      </div>
+      <div class="input-group">
+        <input type="email" id="signupEmail" placeholder=" " required>
+        <label>Email Address</label>
+      </div>
+      <div class="input-group">
+        <input type="password" id="signupPassword" placeholder=" " required>
+        <label>Password (min 6 chars)</label>
+      </div>
+      <button class="submit-btn" onclick="signup()">
+        Create Account →
+      </button>
+      <div id="signupError" class="message"></div>
+      <div id="signupSuccess" class="message"></div>
+    </div>
+
+    <!-- Admin Info -->
+    <!-- <div class="admin-info">
+      <strong>Demo Access</strong>
+      Admin: admin@sevak.gov / admin123
+    </div> -->
+  </div>
+
+  <script>
+    // Tab switching
+    function showLogin() {
+      document.getElementById('loginForm').classList.remove('hidden');
+      document.getElementById('signupForm').classList.add('hidden');
+      document.querySelectorAll('.tab')[0].classList.add('active');
+      document.querySelectorAll('.tab')[1].classList.remove('active');
+      clearMessages();
+    }
+
+    function showSignup() {
+      document.getElementById('loginForm').classList.add('hidden');
+      document.getElementById('signupForm').classList.remove('hidden');
+      document.querySelectorAll('.tab')[0].classList.remove('active');
+      document.querySelectorAll('.tab')[1].classList.add('active');
+      clearMessages();
+    }
+
+    function clearMessages() {
+      ['loginError', 'signupError', 'signupSuccess'].forEach(id => {
+        document.getElementById(id).className = 'message';
+      });
+    }
+
+    // Login function
+    async function login() {
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+      const errorDiv = document.getElementById('loginError');
+
+      if (!email || !password) {
+        errorDiv.textContent = 'Please fill all fields';
+        errorDiv.className = 'message error';
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ email, password })
+        });
+
+        if (!res.ok) throw new Error('Invalid credentials');
+
+        const user = await res.json();
+        localStorage.setItem('sevak_user', JSON.stringify(user));
+
+        // Redirect
+        if (user.role === 'admin') {
+          window.location.href = '/admin.html';
+        } else {
+          window.location.href = '/dashboard.html';
+        }
+
+      } catch (err) {
+        errorDiv.textContent = 'Invalid email or password';
+        errorDiv.className = 'message error';
+      }
+    }
+
+    // Signup function
+    async function signup() {
+      const username = document.getElementById('signupUsername').value.trim();
+      const email = document.getElementById('signupEmail').value.trim();
+      const password = document.getElementById('signupPassword').value;
+      const errorDiv = document.getElementById('signupError');
+      const successDiv = document.getElementById('signupSuccess');
+
+      if (!username || !email || !password) {
+        errorDiv.textContent = 'Please fill all fields';
+        errorDiv.className = 'message error';
+        return;
+      }
+
+      if (password.length < 6) {
+        errorDiv.textContent = 'Password must be at least 6 characters';
+        errorDiv.className = 'message error';
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/signup', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ username, email, password })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.error);
+
+        errorDiv.className = 'message hidden';
+        successDiv.textContent = 'Account created! Please login.';
+        successDiv.className = 'message success';
+
+        // Clear form
+        document.getElementById('signupUsername').value = '';
+        document.getElementById('signupEmail').value = '';
+        document.getElementById('signupPassword').value = '';
+
+        // Switch to login after delay
+        setTimeout(showLogin, 2000);
+
+      } catch (err) {
+        errorDiv.textContent = err.message || 'Signup failed';
+        errorDiv.className = 'message error';
+      }
+    }
+
+    // Allow Enter key
+    document.getElementById('loginPassword')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') login();
+    });
+  </script>
+</body>
+</html>

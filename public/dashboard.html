@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SEVAK - Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    :root {
+      --saffron: #FF6B00;
+      --saffron-light: #ff8c35;
+      --navy: #0f1535;
+      --navy-mid: #1a237e;
+      --glass-bg: rgba(255, 255, 255, 0.07);
+      --glass-border: rgba(255, 255, 255, 0.12);
+      --text-primary: rgba(255,255,255,0.95);
+      --text-secondary: rgba(255,255,255,0.6);
+      --success: #4caf82;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --step-active: #FF6B00;
+      --step-done: #4caf82;
+    }
+    
+    body {
+      font-family: 'Sora', system-ui, sans-serif;
+      background: linear-gradient(135deg, #090d22 0%, #0f1535 40%, #1a237e 100%);
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Animated grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: 
+        linear-gradient(rgba(255,107,0,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,107,0,0.03) 1px, transparent 1px);
+      background-size: 50px 50px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .particles { position: fixed; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+    .particle {
+      position: absolute;
+      background: radial-gradient(circle, rgba(255,107,0,0.15), transparent);
+      border-radius: 50%;
+      animation: float-up 20s infinite;
+    }
+    .particle:nth-child(1) { width: 80px; height: 80px; left: 5%; animation-delay: 0s; animation-duration: 15s; }
+    .particle:nth-child(2) { width: 120px; height: 120px; left: 25%; animation-delay: 3s; animation-duration: 22s; }
+    .particle:nth-child(3) { width: 60px; height: 60px; left: 45%; animation-delay: 6s; animation-duration: 18s; }
+    .particle:nth-child(4) { width: 100px; height: 100px; left: 65%; animation-delay: 2s; animation-duration: 25s; }
+    .particle:nth-child(5) { width: 70px; height: 70px; left: 85%; animation-delay: 5s; animation-duration: 20s; }
+
+    @keyframes float-up {
+      0% { transform: translateY(100vh) scale(0.5); opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 0.5; }
+      100% { transform: translateY(-100px) scale(1.2); opacity: 0; }
+    }
+
+    /* Header */
+    .header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 64px;
+      background: rgba(9,13,34,0.8);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--glass-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      z-index: 100;
+    }
+
+    .logo-section { display: flex; align-items: center; gap: 10px; }
+    .logo-icon {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, #FF6B00, #ff8c35);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 4px 15px rgba(255,107,0,0.4);
+    }
+    .logo-text { color: white; font-size: 20px; font-weight: 700; letter-spacing: 1px; }
+    .logo-text span { color: var(--saffron); }
+
+    .user-section { display: flex; align-items: center; gap: 14px; }
+    .user-info {
+      display: flex; align-items: center; gap: 10px;
+      color: white; padding: 6px 14px;
+      background: var(--glass-bg);
+      border-radius: 25px;
+      border: 1px solid var(--glass-border);
+      font-size: 13px;
+    }
+    .user-avatar {
+      width: 30px; height: 30px;
+      background: linear-gradient(135deg, #FF6B00, #ff8c35);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 13px; color: white;
+    }
+    .logout-btn {
+      background: transparent; color: var(--text-secondary);
+      border: 1px solid var(--glass-border);
+      padding: 8px 18px; border-radius: 20px;
+      cursor: pointer; font-size: 12px; font-family: 'Sora', sans-serif;
+      transition: all 0.2s;
+    }
+    .logout-btn:hover { color: white; border-color: rgba(255,107,0,0.5); background: rgba(255,107,0,0.1); }
+
+    /* Main */
+    .main { min-height: 100vh; padding-top: 84px; padding-bottom: 30px; position: relative; z-index: 10; }
+
+    /* Chat Section */
+    .chat-section {
+      max-width: 820px; margin: 0 auto; padding: 20px;
+      display: flex; flex-direction: column; height: calc(100vh - 104px);
+    }
+
+    .chat-header {
+      text-align: center; color: white; margin-bottom: 20px;
+      padding: 24px 30px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      border-radius: 18px;
+      border: 1px solid var(--glass-border);
+    }
+    .chat-header h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+    .chat-header p { font-size: 13px; color: var(--text-secondary); }
+
+    .chat-messages {
+      flex: 1; overflow-y: auto; padding: 10px 0; display: flex;
+      flex-direction: column; gap: 16px;
+    }
+    .chat-messages::-webkit-scrollbar { width: 4px; }
+    .chat-messages::-webkit-scrollbar-thumb { background: rgba(255,107,0,0.3); border-radius: 4px; }
+
+    .msg { display: flex; gap: 12px; align-items: flex-start; animation: msg-in 0.3s ease; }
+    @keyframes msg-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .msg.user { flex-direction: row-reverse; }
+
+    .msg-avatar {
+      width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; border: 1px solid var(--glass-border);
+      background: var(--glass-bg); backdrop-filter: blur(10px);
+    }
+    .msg.user .msg-avatar {
+      background: linear-gradient(135deg, #FF6B00, #ff8c35);
+      font-size: 13px; font-weight: 700; color: white; border: none;
+    }
+
+    .msg-content { display: flex; flex-direction: column; gap: 8px; max-width: 80%; }
+    .msg.user .msg-content { align-items: flex-end; }
+
+    .msg-bubble {
+      padding: 14px 18px; border-radius: 18px;
+      font-size: 14px; line-height: 1.7;
+      background: var(--glass-bg); backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      color: var(--text-primary);
+    }
+    .msg.user .msg-bubble {
+      background: linear-gradient(135deg, rgba(255,107,0,0.25), rgba(255,140,53,0.15));
+      border-color: rgba(255,107,0,0.3);
+    }
+
+    .chat-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chat-action-btn {
+      padding: 9px 16px; border-radius: 20px; font-size: 13px; font-weight: 500;
+      background: var(--glass-bg); border: 1px solid rgba(255,107,0,0.4);
+      color: var(--saffron); cursor: pointer; font-family: 'Sora', sans-serif;
+      transition: all 0.2s;
+    }
+    .chat-action-btn:hover { background: rgba(255,107,0,0.15); transform: translateY(-1px); }
+
+    /* Word suggestions while typing */
+    .word-suggestions {
+      display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 0;
+    }
+    .word-chip {
+      padding: 5px 12px; border-radius: 14px; font-size: 12px;
+      background: rgba(255,107,0,0.12); border: 1px solid rgba(255,107,0,0.3);
+      color: var(--saffron); cursor: pointer; font-family: 'Sora', sans-serif;
+      transition: all 0.2s;
+    }
+    .word-chip:hover { background: rgba(255,107,0,0.25); }
+
+    .typing-indicator { display: flex; gap: 5px; align-items: center; }
+    .typing-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--saffron); opacity: 0.7;
+      animation: bounce 1.2s infinite;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+
+    /* Chat input */
+    .chat-input-area {
+      margin-top: 16px; display: flex; gap: 10px; align-items: center;
+      background: var(--glass-bg); backdrop-filter: blur(20px);
+      border-radius: 16px; border: 1px solid var(--glass-border);
+      padding: 8px 12px;
+    }
+    .chat-input {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: white; font-size: 14px; font-family: 'Sora', sans-serif;
+      padding: 8px;
+    }
+    .chat-input::placeholder { color: var(--text-secondary); }
+    .send-btn {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: linear-gradient(135deg, #FF6B00, #ff8c35);
+      border: none; color: white; cursor: pointer; font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s; flex-shrink: 0;
+    }
+    .send-btn:hover { transform: scale(1.05); box-shadow: 0 4px 15px rgba(255,107,0,0.4); }
+
+    /* Panels */
+    .content-panel {
+      position: fixed; inset: 64px 0 0 0;
+      overflow-y: auto; z-index: 50;
+      background: linear-gradient(135deg, #090d22 0%, #0f1535 40%, #1a237e 100%);
+      display: none; padding: 30px;
+      animation: slide-in 0.3s ease;
+    }
+    .content-panel.active { display: block; }
+    @keyframes slide-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+    .panel-inner { max-width: 780px; margin: 0 auto; }
+    .panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .panel-title { color: white; font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+    .back-btn {
+      background: var(--glass-bg); border: 1px solid var(--glass-border);
+      color: var(--text-secondary); padding: 9px 18px; border-radius: 20px;
+      cursor: pointer; font-size: 13px; font-family: 'Sora', sans-serif;
+      transition: all 0.2s;
+    }
+    .back-btn:hover { color: white; border-color: var(--saffron); }
+
+    /* Step Indicator */
+    .step-indicator {
+      display: flex; align-items: center; gap: 0; margin-bottom: 28px;
+      background: var(--glass-bg); border: 1px solid var(--glass-border);
+      border-radius: 16px; padding: 16px 20px;
+    }
+    .step-item {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      flex: 1; cursor: pointer; transition: all 0.2s;
+    }
+    .step-circle {
+      width: 34px; height: 34px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 600;
+      border: 2px solid var(--glass-border);
+      color: var(--text-secondary);
+      background: transparent; transition: all 0.3s;
+    }
+    .step-item.active .step-circle { border-color: var(--saffron); color: var(--saffron); background: rgba(255,107,0,0.15); }
+    .step-item.done .step-circle { border-color: var(--success); background: var(--success); color: white; }
+    .step-label { font-size: 11px; color: var(--text-secondary); text-align: center; font-weight: 500; }
+    .step-item.active .step-label { color: var(--saffron); }
+    .step-item.done .step-label { color: var(--success); }
+    .step-divider { flex: 0.5; height: 2px; background: var(--glass-border); margin-bottom: 20px; transition: background 0.3s; }
+    .step-divider.done { background: var(--success); }
+
+    /* Step Content */
+    .step-content { display: none; }
+    .step-content.active { display: block; animation: fade-in 0.3s ease; }
+    @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Cards */
+    .card {
+      background: var(--glass-bg); backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border); border-radius: 20px;
+      padding: 28px; margin-bottom: 20px;
+    }
+    .card-title { color: white; font-size: 16px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+    .card-title .icon { font-size: 22px; }
+
+    /* Form Elements */
+    .form-group { margin-bottom: 18px; }
+    label { display: block; color: var(--text-secondary); font-size: 12px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 8px; text-transform: uppercase; }
+    
+    input[type="text"], input[type="tel"], input[type="email"], select, textarea {
+      width: 100%; padding: 14px 16px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px; color: white; font-size: 14px;
+      font-family: 'Sora', sans-serif;
+      outline: none; transition: all 0.2s;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(255,107,0,0.5);
+      background: rgba(255,107,0,0.05);
+      box-shadow: 0 0 0 3px rgba(255,107,0,0.1);
+    }
+    input::placeholder, textarea::placeholder { color: var(--text-secondary); }
+    select option { background: #1a237e; color: white; }
+    textarea { resize: vertical; min-height: 120px; line-height: 1.7; }
+
+    /* Image Upload */
+    .upload-zone {
+      border: 2px dashed rgba(255,107,0,0.4);
+      border-radius: 16px; padding: 40px 30px; text-align: center;
+      cursor: pointer; transition: all 0.3s; position: relative;
+      background: rgba(255,107,0,0.04);
+    }
+    .upload-zone:hover { border-color: var(--saffron); background: rgba(255,107,0,0.08); }
+    .upload-zone .icon { font-size: 48px; margin-bottom: 14px; display: block; }
+    .upload-zone .title { color: white; font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .upload-zone .subtitle { color: var(--text-secondary); font-size: 13px; }
+
+    .image-preview {
+      position: relative; border-radius: 16px; overflow: hidden;
+      margin-top: 16px; display: none;
+    }
+    .image-preview img { width: 100%; max-height: 280px; object-fit: cover; display: block; }
+    .image-preview-overlay {
+      position: absolute; top: 10px; right: 10px;
+      display: flex; gap: 8px;
+    }
+    .img-action-btn {
+      padding: 6px 12px; border-radius: 8px; font-size: 12px; cursor: pointer;
+      border: none; font-family: 'Sora', sans-serif; font-weight: 600;
+    }
+    .img-action-btn.change { background: rgba(0,0,0,0.7); color: white; }
+    .img-action-btn.remove { background: rgba(239,68,68,0.8); color: white; }
+
+    /* AI Analysis Badge */
+    .ai-badge {
+      background: rgba(33,150,243,0.12); border: 1px solid rgba(33,150,243,0.3);
+      border-radius: 14px; padding: 18px; margin-top: 16px; display: none;
+    }
+    .ai-badge-title { color: #64b5f6; font-size: 12px; font-weight: 700; letter-spacing: 1px; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+    .ai-badge-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .ai-badge-item { text-align: center; }
+    .ai-badge-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
+    .ai-badge-value { font-size: 14px; font-weight: 600; color: white; }
+
+    /* AI Description with suggestions */
+    .desc-wrapper { position: relative; }
+    .ai-predict-box {
+      background: rgba(255,107,0,0.1); border: 1px solid rgba(255,107,0,0.3);
+      border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
+      display: none;
+    }
+    .ai-predict-title { font-size: 11px; color: var(--saffron); font-weight: 700; letter-spacing: 0.5px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+    .predict-text { font-size: 13px; color: var(--text-primary); line-height: 1.6; margin-bottom: 10px; cursor: pointer; }
+    .predict-text .typed { color: rgba(255,255,255,0.5); }
+    .predict-text .suggestion { color: var(--saffron); font-weight: 600; }
+    .predict-actions { display: flex; gap: 8px; }
+    .predict-btn {
+      padding: 6px 14px; border-radius: 8px; font-size: 12px;
+      border: none; cursor: pointer; font-family: 'Sora', sans-serif; font-weight: 600;
+    }
+    .predict-btn.accept { background: rgba(255,107,0,0.2); color: var(--saffron); border: 1px solid rgba(255,107,0,0.4); }
+    .predict-btn.dismiss { background: transparent; color: var(--text-secondary); border: 1px solid var(--glass-border); }
+
+    /* Word chips under textarea */
+    .word-chip-row {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
+    }
+
+    /* Location */
+    #formMap { height: 260px; border-radius: 14px; overflow: hidden; margin-bottom: 14px; border: 1px solid var(--glass-border); }
+    .location-row { display: flex; gap: 10px; align-items: center; }
+
+    /* Summary review */
+    .summary-block {
+      background: rgba(255,255,255,0.04); border-radius: 14px;
+      border: 1px solid var(--glass-border); padding: 20px; margin-bottom: 16px;
+    }
+    .summary-label { font-size: 11px; color: var(--text-secondary); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px; }
+    .summary-value { color: white; font-size: 14px; line-height: 1.6; }
+    .summary-image { width: 100%; max-height: 200px; object-fit: cover; border-radius: 10px; margin-top: 8px; }
+
+    /* Buttons */
+    .btn-primary {
+      width: 100%; padding: 16px;
+      background: linear-gradient(135deg, #FF6B00, #ff8c35);
+      border: none; border-radius: 14px; color: white;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      font-family: 'Sora', sans-serif; transition: all 0.2s;
+      box-shadow: 0 6px 20px rgba(255,107,0,0.3);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(255,107,0,0.4); }
+    .btn-secondary {
+      padding: 14px 20px; border-radius: 12px;
+      background: var(--glass-bg); border: 1px solid var(--glass-border);
+      color: white; cursor: pointer; font-size: 14px;
+      font-family: 'Sora', sans-serif; white-space: nowrap; transition: all 0.2s;
+    }
+    .btn-secondary:hover { border-color: var(--saffron); background: rgba(255,107,0,0.1); }
+
+    .btn-row { display: flex; gap: 12px; margin-top: 24px; }
+    .btn-row .btn-back { flex: 0.5; }
+    .btn-row .btn-next { flex: 1; }
+
+    /* Nav buttons for steps */
+    .btn-outline {
+      flex: 1; padding: 14px;
+      background: transparent; border: 1px solid var(--glass-border);
+      border-radius: 14px; color: var(--text-secondary);
+      font-size: 14px; font-weight: 500; cursor: pointer;
+      font-family: 'Sora', sans-serif; transition: all 0.2s;
+    }
+    .btn-outline:hover { border-color: white; color: white; }
+
+    /* Category tags */
+    .category-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 4px;
+    }
+    .cat-tag {
+      padding: 12px 10px; border-radius: 12px; text-align: center;
+      border: 1px solid var(--glass-border); cursor: pointer;
+      font-size: 12px; color: var(--text-secondary);
+      background: var(--glass-bg); transition: all 0.2s;
+    }
+    .cat-tag .cat-icon { font-size: 22px; display: block; margin-bottom: 6px; }
+    .cat-tag:hover { border-color: var(--saffron); color: var(--saffron); background: rgba(255,107,0,0.08); }
+    .cat-tag.selected { border-color: var(--saffron); color: var(--saffron); background: rgba(255,107,0,0.15); }
+
+    /* Track & History */
+    .track-box { display: flex; gap: 12px; align-items: center; }
+    .complaint-card {
+      background: var(--glass-bg); backdrop-filter: blur(20px);
+      border-radius: 18px; padding: 24px; margin-bottom: 16px;
+      border: 1px solid var(--glass-border); cursor: pointer; transition: all 0.2s;
+    }
+    .complaint-card:hover { border-color: rgba(255,107,0,0.4); transform: translateY(-2px); }
+
+    /* Status badges */
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    }
+    .badge-pending { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
+    .badge-progress { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+    .badge-resolved { background: rgba(76,175,130,0.15); color: #4caf82; border: 1px solid rgba(76,175,130,0.3); }
+    .badge-high { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+    .badge-medium { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
+    .badge-low { background: rgba(76,175,130,0.15); color: #4caf82; border: 1px solid rgba(76,175,130,0.3); }
+
+    /* Modal */
+    #successModal {
+      position: fixed; inset: 0; z-index: 999;
+      background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    #successModal.show { display: flex; }
+    .modal-box {
+      background: linear-gradient(135deg, #0f1535, #1a237e);
+      border: 1px solid var(--glass-border); border-radius: 24px;
+      padding: 40px; max-width: 460px; width: 100%; text-align: center;
+      animation: modal-in 0.3s ease;
+    }
+    @keyframes modal-in { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .modal-icon { font-size: 52px; margin-bottom: 18px; }
+    .modal-id-box {
+      background: rgba(255,107,0,0.1); border: 1px solid rgba(255,107,0,0.3);
+      border-radius: 14px; padding: 20px; margin: 20px 0;
+    }
+    .modal-id-label { font-size: 11px; color: var(--text-secondary); letter-spacing: 1px; margin-bottom: 8px; }
+    .modal-id-value { font-size: 28px; font-weight: 700; color: var(--saffron); font-family: 'JetBrains Mono', monospace; letter-spacing: 3px; }
+    .modal-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .modal-btn {
+      padding: 14px; border-radius: 12px; font-size: 14px; font-weight: 600;
+      cursor: pointer; font-family: 'Sora', sans-serif; transition: all 0.2s;
+    }
+    .modal-btn.primary { background: linear-gradient(135deg, #FF6B00, #ff8c35); color: white; border: none; }
+    .modal-btn.secondary { background: var(--glass-bg); color: white; border: 1px solid var(--glass-border); }
+    .modal-btn:hover { transform: translateY(-2px); }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: rgba(15,21,53,0.95); backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border); color: white;
+      padding: 12px 24px; border-radius: 30px; font-size: 14px;
+      opacity: 0; transition: all 0.3s; z-index: 9999; white-space: nowrap;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* Edit indicator */
+    .edit-prompt {
+      background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3);
+      border-radius: 10px; padding: 12px 16px; font-size: 13px;
+      color: #60a5fa; margin-top: 12px; display: none; cursor: pointer;
+    }
+
+    /* Info row in track */
+    .info-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--glass-border); }
+    .info-row:last-child { border-bottom: none; }
+    .info-key { font-size: 13px; color: var(--text-secondary); }
+    .info-val { font-size: 13px; color: white; font-weight: 500; text-align: right; }
+
+    .hidden { display: none !important; }
+    
+    @media (max-width: 640px) {
+      .content-panel { padding: 16px; }
+      .category-grid { grid-template-columns: repeat(3, 1fr); }
+      .ai-badge-grid { grid-template-columns: 1fr 1fr; }
+      .modal-btns { grid-template-columns: 1fr; }
+      .chat-section { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="particles">
+    <div class="particle"></div><div class="particle"></div><div class="particle"></div>
+    <div class="particle"></div><div class="particle"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="logo-section">
+      <div class="logo-icon">🏛️</div>
+      <div class="logo-text">सेवक <span>SEVAK</span></div>
+    </div>
+    <div class="user-section">
+      <div class="user-info">
+        <span id="userNameDisplay" style="font-size:13px; color: rgba(255,255,255,0.9);">Welcome</span>
+        <div class="user-avatar" id="userAvatar">U</div>
+      </div>
+      <button class="logout-btn" onclick="logout()">Sign Out</button>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <div class="main">
+    <!-- Chat -->
+    <div class="chat-section" id="chatSection">
+      <div class="chat-header">
+        <h1>How can I help you today?</h1>
+        <p>Your AI-powered civic companion for urban India 🇮🇳</p>
+      </div>
+      <div class="chat-messages" id="chatMessages"></div>
+      <div class="chat-input-area">
+        <input type="text" class="chat-input" id="chatInput" 
+               placeholder="Type a message or complaint keyword…"
+               onkeypress="if(event.key==='Enter')sendMessage()"
+               oninput="handleChatTyping(this)">
+        <button class="send-btn" onclick="sendMessage()">➤</button>
+      </div>
+      <!-- Inline word suggestions while typing in chat -->
+      <div class="word-chip-row" id="chatWordSuggestions"></div>
+    </div>
+
+    <!-- FILE COMPLAINT PANEL - Step-by-step -->
+    <div class="content-panel" id="filePanel">
+      <div class="panel-inner">
+        <div class="panel-header">
+          <div class="panel-title"><span>📋</span> File New Complaint</div>
+          <button class="back-btn" onclick="backToChat()">← Back</button>
+        </div>
+
+        <!-- Step Indicator -->
+        <div class="step-indicator">
+          <div class="step-item active" id="si-1" onclick="goToStep(1)">
+            <div class="step-circle" id="sc-1">1</div>
+            <div class="step-label">Photo</div>
+          </div>
+          <div class="step-divider" id="sd-1"></div>
+          <div class="step-item" id="si-2" onclick="goToStep(2)">
+            <div class="step-circle" id="sc-2">2</div>
+            <div class="step-label">Describe</div>
+          </div>
+          <div class="step-divider" id="sd-2"></div>
+          <div class="step-item" id="si-3" onclick="goToStep(3)">
+            <div class="step-circle" id="sc-3">3</div>
+            <div class="step-label">Location</div>
+          </div>
+          <div class="step-divider" id="sd-3"></div>
+          <div class="step-item" id="si-4" onclick="goToStep(4)">
+            <div class="step-circle" id="sc-4">4</div>
+            <div class="step-label">Details</div>
+          </div>
+          <div class="step-divider" id="sd-4"></div>
+          <div class="step-item" id="si-5" onclick="goToStep(5)">
+            <div class="step-circle" id="sc-5">5</div>
+            <div class="step-label">Review</div>
+          </div>
+        </div>
+
+        <!-- STEP 1: Photo Upload -->
+        <div class="step-content active" id="step-1">
+          <div class="card">
+            <div class="card-title"><span class="icon">📷</span> Upload Photo of Issue</div>
+            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 20px; line-height: 1.7;">
+              Start by uploading a clear photo. Our AI will automatically detect the issue type and write an initial description for you.
+            </p>
+            
+            <div class="upload-zone" onclick="document.getElementById('imageInput').click()" id="uploadZone">
+              <span class="icon">📷</span>
+              <div class="title">Click to Upload Photo</div>
+              <div class="subtitle">JPG, PNG, WEBP • Max 5MB • AI will analyze automatically</div>
+              <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="analyzeImage(this)">
+            </div>
+
+            <div class="image-preview" id="imagePreviewContainer">
+              <img id="uploadedImage" alt="Preview">
+              <div class="image-preview-overlay">
+                <button class="img-action-btn change" onclick="document.getElementById('imageInput').click()">Change</button>
+                <button class="img-action-btn remove" onclick="removeImage()">Remove</button>
+              </div>
+            </div>
+
+            <div class="ai-badge" id="aiImageResults">
+              <div class="ai-badge-title">🤖 AI ANALYSIS COMPLETE</div>
+              <div class="ai-badge-grid">
+                <div class="ai-badge-item">
+                  <div class="ai-badge-label">Category</div>
+                  <div class="ai-badge-value" id="ai-cat">—</div>
+                </div>
+                <div class="ai-badge-item">
+                  <div class="ai-badge-label">Severity</div>
+                  <div class="ai-badge-value" id="ai-sev">—</div>
+                </div>
+                <div class="ai-badge-item">
+                  <div class="ai-badge-label">Est. Days</div>
+                  <div class="ai-badge-value" id="ai-days">—</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="btn-row" style="margin-top: 24px;">
+              <button class="btn-primary btn-next" onclick="nextStep(1)">Continue →</button>
+            </div>
+            <p style="color:var(--text-secondary); font-size: 12px; text-align:center; margin-top: 12px;">Photo is optional — you can skip and describe the issue manually</p>
+          </div>
+        </div>
+
+        <!-- STEP 2: Describe with AI Suggestions -->
+        <div class="step-content" id="step-2">
+          <div class="card">
+            <div class="card-title"><span class="icon">✍️</span> Describe the Issue</div>
+
+            <!-- Category selection -->
+            <div class="form-group">
+              <label>Issue Category *</label>
+              <div class="category-grid" id="categoryGrid">
+                <div class="cat-tag" onclick="selectCategory('Roads')"><span class="cat-icon">🛣️</span>Roads</div>
+                <div class="cat-tag" onclick="selectCategory('Water')"><span class="cat-icon">💧</span>Water</div>
+                <div class="cat-tag" onclick="selectCategory('Electricity')"><span class="cat-icon">⚡</span>Electricity</div>
+                <div class="cat-tag" onclick="selectCategory('Garbage')"><span class="cat-icon">🗑️</span>Garbage</div>
+                <div class="cat-tag" onclick="selectCategory('Drainage')"><span class="cat-icon">🚿</span>Drainage</div>
+                <div class="cat-tag" onclick="selectCategory('Streetlight')"><span class="cat-icon">💡</span>Streetlight</div>
+                <div class="cat-tag" onclick="selectCategory('Parks')"><span class="cat-icon">🌳</span>Parks</div>
+                <div class="cat-tag" onclick="selectCategory('Noise')"><span class="cat-icon">📢</span>Noise</div>
+                <div class="cat-tag" onclick="selectCategory('Other')"><span class="cat-icon">📋</span>Other</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Description * <span style="color: var(--saffron); font-size: 11px;">(AI will help you complete)</span></label>
+              <div class="desc-wrapper">
+                <!-- AI Prediction box -->
+                <div class="ai-predict-box" id="aiPredictionBox">
+                  <div class="ai-predict-title">✨ AI SUGGESTION <span style="color:var(--text-secondary); font-weight:400; margin-left:6px;">— Press TAB to accept</span></div>
+                  <div class="predict-text" id="predictionText" onclick="acceptPrediction()"></div>
+                  <div class="predict-actions">
+                    <button class="predict-btn accept" onclick="acceptPrediction()">✅ Accept (Tab)</button>
+                    <button class="predict-btn dismiss" onclick="dismissPrediction()">✕ Ignore</button>
+                  </div>
+                </div>
+                <textarea id="formDescription" rows="5" 
+                          placeholder="Start typing… AI will suggest sentence completions. E.g., 'Water pipeline is leaking…'"
+                          oninput="smartPredict(this)"
+                          onkeydown="handlePredictionKey(event)"></textarea>
+              </div>
+              <!-- 3 word suggestions -->
+              <div class="word-chip-row" id="wordSuggestions"></div>
+            </div>
+
+            <div class="btn-row">
+              <button class="btn-outline btn-back" onclick="prevStep(2)">← Back</button>
+              <button class="btn-primary btn-next" onclick="nextStep(2)">Continue →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 3: Location -->
+        <div class="step-content" id="step-3">
+          <div class="card">
+            <div class="card-title"><span class="icon">📍</span> Where is the Issue?</div>
+            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 18px;">Click on the map to pin the exact location, or use GPS auto-detection.</p>
+            
+            <div id="formMap"></div>
+            <div class="location-row" style="margin-top: 12px;">
+              <input type="text" id="formLocation" placeholder="Click map or use GPS…" style="flex:1">
+              <button class="btn-secondary" onclick="getFormLocation()" type="button">📍 Auto GPS</button>
+            </div>
+
+            <div class="btn-row">
+              <button class="btn-outline btn-back" onclick="prevStep(3)">← Back</button>
+              <button class="btn-primary btn-next" onclick="nextStep(3)">Continue →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 4: User Details -->
+        <div class="step-content" id="step-4">
+          <div class="card">
+            <div class="card-title"><span class="icon">👤</span> Your Contact Details</div>
+            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 20px;">We need your details to send complaint updates.</p>
+            
+            <div class="form-group">
+              <label>Full Name *</label>
+              <input type="text" id="formName" placeholder="Enter your full name">
+            </div>
+            <div class="form-group">
+              <label>Phone Number</label>
+              <input type="tel" id="formPhone" placeholder="+91 98765 43210">
+            </div>
+
+            <div class="btn-row">
+              <button class="btn-outline btn-back" onclick="prevStep(4)">← Back</button>
+              <button class="btn-primary btn-next" onclick="nextStep(4)">Review →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 5: Summary Review -->
+        <div class="step-content" id="step-5">
+          <div class="card">
+            <div class="card-title"><span class="icon">✅</span> Review Your Complaint</div>
+            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 20px;">Please verify all details before submitting. Click any field to edit it.</p>
+
+            <div class="summary-block" onclick="goToStep(1)" title="Click to edit">
+              <div class="summary-label">📷 Photo</div>
+              <div id="sum-photo" class="summary-value" style="color: var(--text-secondary);">No photo uploaded</div>
+            </div>
+            <div class="summary-block" onclick="goToStep(2)" title="Click to edit">
+              <div class="summary-label">🏷️ Category</div>
+              <div id="sum-cat" class="summary-value">—</div>
+            </div>
+            <div class="summary-block" onclick="goToStep(2)" title="Click to edit">
+              <div class="summary-label">📝 Description</div>
+              <div id="sum-desc" class="summary-value">—</div>
+            </div>
+            <div class="summary-block" onclick="goToStep(3)" title="Click to edit">
+              <div class="summary-label">📍 Location</div>
+              <div id="sum-loc" class="summary-value">—</div>
+            </div>
+            <div class="summary-block" onclick="goToStep(4)" title="Click to edit">
+              <div class="summary-label">👤 Name</div>
+              <div id="sum-name" class="summary-value">—</div>
+            </div>
+            <div class="summary-block" onclick="goToStep(4)" title="Click to edit">
+              <div class="summary-label">📱 Phone</div>
+              <div id="sum-phone" class="summary-value">—</div>
+            </div>
+
+            <div style="background: rgba(255,107,0,0.08); border: 1px solid rgba(255,107,0,0.25); border-radius: 12px; padding: 16px; margin: 16px 0;">
+              <div style="color: var(--saffron); font-size: 13px; font-weight: 600; margin-bottom: 4px;">Is all information correct?</div>
+              <div style="color: var(--text-secondary); font-size: 12px;">Click any field above to edit. Then submit below.</div>
+            </div>
+
+            <div class="btn-row">
+              <button class="btn-outline btn-back" onclick="prevStep(5)">← Edit</button>
+              <button class="btn-primary btn-next" onclick="submitFormComplaint()">🚀 Submit Complaint</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRACK PANEL -->
+    <div class="content-panel" id="trackPanel">
+      <div class="panel-inner">
+        <div class="panel-header">
+          <div class="panel-title"><span>🔍</span> Track Complaint</div>
+          <button class="back-btn" onclick="backToChat()">← Back</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">🆔</span> Enter Complaint ID</div>
+          <div class="track-box">
+            <input type="text" id="trackIdInput" placeholder="SVK-XXXXXXXX" style="flex:1; font-family:'JetBrains Mono',monospace; letter-spacing:1px;">
+            <button class="btn-secondary" onclick="submitTrack()">Track →</button>
+          </div>
+        </div>
+
+        <div id="trackResultContainer"></div>
+      </div>
+    </div>
+
+    <!-- HISTORY PANEL -->
+    <div class="content-panel" id="listPanel">
+      <div class="panel-inner">
+        <div class="panel-header">
+          <div class="panel-title"><span>📑</span> My Complaint History</div>
+          <button class="back-btn" onclick="backToChat()">← Back</button>
+        </div>
+        <div id="complaintsListContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success Modal -->
+  <div id="successModal">
+    <div class="modal-box">
+      <div class="modal-icon">✅</div>
+      <h2 style="color:white; margin-bottom:10px; font-size:22px;">Complaint Submitted!</h2>
+      <p style="color:var(--text-secondary); font-size:14px; margin-bottom:4px;">Your complaint has been registered successfully.</p>
+      <div class="modal-id-box">
+        <div class="modal-id-label">COMPLAINT REFERENCE NUMBER</div>
+        <div class="modal-id-value" id="modalComplaintId">SVK-XXXXXXXX</div>
+        <button onclick="copyComplaintId()" style="margin-top:12px; padding:8px 18px; border-radius:20px; background:rgba(255,107,0,0.2); border:1px solid rgba(255,107,0,0.4); color:var(--saffron); cursor:pointer; font-size:13px; font-family:'Sora',sans-serif; font-weight:600;">📋 Copy ID</button>
+      </div>
+      <div class="modal-btns">
+        <button class="modal-btn primary" onclick="downloadCurrentReport()">⬇️ Download Report</button>
+        <button class="modal-btn secondary" onclick="viewMyComplaints()">📑 My History</button>
+      </div>
+      <button onclick="closeSuccessModal()" style="margin-top:16px; background:transparent; color:var(--text-secondary); border:1px solid var(--glass-border); padding:10px 28px; border-radius:20px; cursor:pointer; font-size:13px; font-family:'Sora',sans-serif;">Close</button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/dashboard.js?v=5"></script>
+</body>
+</html>
