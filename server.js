@@ -18,13 +18,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ═══════════════════════════════════════════════════════════════════
 // MODEL CONFIG
-// Best FREE Gemini model in 2025:
-//   gemini-2.0-flash  → fastest, best quality, free tier generous
-//   gemini-1.5-flash  → fallback if 2.0 unavailable
-// DO NOT use gemini-3-flash — it does not exist yet
+// Best FREE Gemini models in 2025-2026:
+//   gemini-1.5-flash → fastest, best quality, free tier generous
+//   gemini-1.5-pro   → more capable but higher costs
+//   gemini-1.0-pro   → legacy model, still available
 // ═══════════════════════════════════════════════════════════════════
-const GEMINI_MODEL       = 'gemini-2.0-flash';          // for chat & prediction
-const GEMINI_VISION_MODEL = 'gemini-2.0-flash';         // for image analysis (supports vision)
+const GEMINI_MODEL       = 'gemini-1.5-flash';          // for chat & prediction
+const GEMINI_VISION_MODEL = 'gemini-1.5-flash';         // for image analysis (supports vision)
 
 const AI_CONFIG = {
   temperature: 0.3,
@@ -198,7 +198,7 @@ const adminOnly = (req, res, next) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// CHAT — gemini-2.0-flash
+// CHAT — gemini-1.5-flash
 // ═══════════════════════════════════════════════════════════════════
 app.post('/api/chat', async (req, res) => {
   try {
@@ -467,7 +467,7 @@ Rules:
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// AI IMAGE ANALYSIS — gemini-2.0-flash vision
+// AI IMAGE ANALYSIS — gemini-1.5-flash vision
 // ═══════════════════════════════════════════════════════════════════
 app.post('/api/analyze-image', async (req, res) => {
   try {
