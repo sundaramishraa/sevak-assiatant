@@ -18,14 +18,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ═══════════════════════════════════════════════════════════════════
 // MODEL CONFIG
-// Current available Gemini models (2024-2026):
-//   gemini-2.5-flash → fastest, best quality (if available)
-//   gemini-1.5-flash → alternative if 2.5-flash unavailable
-//   gemini-1.5-pro   → more capable but higher costs
-//   gemini-1.0-pro   → legacy model, still available
+// gemini-1.5-flash is DEAD (retired April 2025) → use gemini-2.5-flash
+// Free tier: 15 RPM, 1500 RPD, no credit card needed
 // ═══════════════════════════════════════════════════════════════════
-const GEMINI_MODEL       = 'gemini-2.5-flash';          // for chat & prediction
-const GEMINI_VISION_MODEL = 'gemini-2.5-flash';         // for image analysis (supports vision)
+const GEMINI_MODEL        = 'gemini-2.5-flash';   // for chat, predict, improve
+const GEMINI_VISION_MODEL = 'gemini-2.5-flash';   // supports vision/multimodal
 
 const AI_CONFIG = {
   temperature: 0.3,
@@ -34,20 +31,75 @@ const AI_CONFIG = {
 };
 
 // Initialize SDK
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'MISSING');
+const genAI   = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'MISSING');
 const getModel = (name) => genAI.getGenerativeModel({ model: name });
+
+// ═══════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Retry wrapper for Gemini calls.
+ * Handles 503 Service Unavailable (high demand) with exponential back-off.
+ */
+async function callGeminiWithRetry(model, payload, retries = 3, delayMs = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await model.generateContent(payload);
+    } catch (err) {
+      const is503 =
+        err.message?.includes('503') ||
+        err.message?.includes('Service Unavailable') ||
+        err.message?.includes('high demand');
+
+      if (is503 && i < retries - 1) {
+        const wait = delayMs * (i + 1); // 2s, 4s, 6s
+        console.warn(`⚠️  Gemini 503 – retrying in ${wait}ms (attempt ${i + 1}/${retries})`);
+        await new Promise(r => setTimeout(r, wait));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
+/**
+ * Robust JSON extractor.
+ * Handles: plain JSON, ```json ... ```, ``` ... ```, preamble text + JSON block.
+ */
+function extractJSON(raw) {
+  if (!raw) throw new Error('Empty response');
+
+  // 1. Direct parse
+  try { return JSON.parse(raw.trim()); } catch {}
+
+  // 2. Markdown code fence  ```json ... ```  or  ``` ... ```
+  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    try { return JSON.parse(fenceMatch[1].trim()); } catch {}
+  }
+
+  // 3. Find first { ... } block anywhere in the string
+  const start = raw.indexOf('{');
+  const end   = raw.lastIndexOf('}');
+  if (start !== -1 && end !== -1 && end > start) {
+    try { return JSON.parse(raw.slice(start, end + 1)); } catch {}
+  }
+
+  throw new Error('No valid JSON found in Gemini response');
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // STARTUP CHECKS
 // ═══════════════════════════════════════════════════════════════════
 console.log('✅ SEVAK Server starting...');
 console.log('PORT       :', process.env.PORT || 3000);
-console.log('MONGO_URI  :', process.env.MONGO_URI  ? '✅ Found' : '❌ MISSING');
+console.log('MONGO_URI  :', process.env.MONGO_URI   ? '✅ Found' : '❌ MISSING');
 console.log('GEMINI_KEY :', process.env.GEMINI_API_KEY ? '✅ Found' : '❌ MISSING');
 console.log('MODEL      :', GEMINI_MODEL);
 
 if (!process.env.MONGO_URI) {
-  console.error('❌ MONGO_URI is required. Add it to your .env or Render/Vercel environment variables.');
+  console.error('❌ MONGO_URI is required. Add it to your .env or Render environment variables.');
   process.exit(1);
 }
 if (!process.env.GEMINI_API_KEY) {
@@ -122,8 +174,8 @@ async function seedAdmin() {
 // ═══════════════════════════════════════════════════════════════════
 app.get('/health', (req, res) => res.json({
   status: 'ok', message: 'SEVAK running 🚀',
-  mongo: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-  model: GEMINI_MODEL,
+  mongo:  mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+  model:  GEMINI_MODEL,
   gemini: process.env.GEMINI_API_KEY ? 'configured' : 'missing'
 }));
 
@@ -145,8 +197,11 @@ app.post('/api/signup', async (req, res) => {
       username, email: email.toLowerCase(),
       password: hashedPassword, name: username, role: 'user'
     });
-    res.json({ success: true, message: 'Account created! Please login.',
-      user: { username: user.username, email: user.email, role: user.role } });
+    res.json({
+      success: true,
+      message: 'Account created! Please login.',
+      user: { username: user.username, email: user.email, role: user.role }
+    });
   } catch (err) {
     console.error('Signup error:', err.message);
     res.status(500).json({ error: 'Signup failed. Please try again.' });
@@ -169,7 +224,8 @@ app.post('/api/login', async (req, res) => {
       { expiresIn: '24h' }
     );
 
-    res.json({ success: true, token,
+    res.json({
+      success: true, token,
       username: user.username, email: user.email,
       name: user.name || user.username, role: user.role, phone: user.phone || ''
     });
@@ -186,10 +242,11 @@ const authenticate = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
+    req.user = jwt.verify(token, JWT_SECRET);
     next();
-  } catch (err) { res.status(401).json({ error: 'Invalid or expired token.' }); }
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token.' });
+  }
 };
 
 const adminOnly = (req, res, next) => {
@@ -214,11 +271,13 @@ app.post('/api/chat', async (req, res) => {
     const lower = userMessage.toLowerCase();
 
     // Domain guard
-    const NON_CIVIC = ['prime minister','modi','rahul','election','vote',
+    const NON_CIVIC = [
+      'prime minister','modi','rahul','election','vote',
       'parliament','minister','congress','bjp','president of','chief minister',
       'cricket','ipl','bollywood','movie','actor','actress','sports',
       'football','hockey','recipe','joke','weather forecast','stock market',
-      'share price','dating','relationship'];
+      'share price','dating','relationship'
+    ];
 
     if (NON_CIVIC.some(kw => lower.includes(kw))) {
       return res.json({
@@ -228,7 +287,10 @@ app.post('/api/chat', async (req, res) => {
     }
 
     if (!process.env.GEMINI_API_KEY) {
-      return res.json({ reply: "I can help you file civic complaints about roads, water, electricity, garbage, and more. What issue are you facing?", fallback: true });
+      return res.json({
+        reply: "I can help you file civic complaints about roads, water, electricity, garbage, and more. What issue are you facing?",
+        fallback: true
+      });
     }
 
     const SYSTEM = `You are SEVAK (सेवक), an AI assistant EXCLUSIVELY for Indian municipal/civic complaints.
@@ -238,10 +300,14 @@ RULES:
 3. Max 3 sentences. Be empathetic.
 4. Detect category from user message, suggest filing a complaint`;
 
-    const model = getModel(GEMINI_MODEL);
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: SYSTEM + "\n\nUser: " + userMessage }] }],
-      generationConfig: { temperature: AI_CONFIG.temperature, topP: AI_CONFIG.top_p, maxOutputTokens: AI_CONFIG.max_tokens }
+    const model  = getModel(GEMINI_MODEL);
+    const result = await callGeminiWithRetry(model, {
+      contents: [{ role: 'user', parts: [{ text: SYSTEM + '\n\nUser: ' + userMessage }] }],
+      generationConfig: {
+        temperature: AI_CONFIG.temperature,
+        topP: AI_CONFIG.top_p,
+        maxOutputTokens: AI_CONFIG.max_tokens
+      }
     });
 
     const reply = result.response.text() || "I'm here to help with civic complaints. What issue are you facing?";
@@ -249,13 +315,15 @@ RULES:
 
   } catch (err) {
     console.error('Chat error:', err.message);
-    res.json({ reply: "I can help with civic complaints — roads, water, electricity, garbage, and more. What problem are you facing?", fallback: true });
+    res.json({
+      reply: "I can help with civic complaints — roads, water, electricity, garbage, and more. What problem are you facing?",
+      fallback: true
+    });
   }
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════
-// PREDICT — 3 word chips + 3 next sentences (continuous)
+// PREDICT — 3 word chips + 3 next sentences
 // Returns: { phrases:[...], sentences:[s1,s2,s3] }
 // ═══════════════════════════════════════════════════════════════════
 app.post('/api/predict', async (req, res) => {
@@ -268,7 +336,7 @@ app.post('/api/predict', async (req, res) => {
 Category: ${category}
 Current text: "${text}"
 
-Return ONLY valid JSON, no markdown:
+Return ONLY valid JSON with no markdown, no code fences, no preamble:
 {
   "phrases": ["2-4 word chip 1","2-4 word chip 2","2-4 word chip 3"],
   "sentences": [
@@ -285,15 +353,15 @@ Rules:
 - civic/municipal topics only: roads, water, electricity, garbage, drainage, noise, parks`;
 
       try {
-        const model = getModel(GEMINI_MODEL);
-        const result = await model.generateContent({
+        const model  = getModel(GEMINI_MODEL);
+        const result = await callGeminiWithRetry(model, {
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.85, topP: 0.92, maxOutputTokens: 300 }
+          generationConfig: { temperature: 0.4, topP: 0.85, maxOutputTokens: 300 }
         });
-        
-        const raw = result.response.text() || '{}';
-        const clean  = raw.replace(/```json|```/g,'').trim();
-        const parsed = JSON.parse(clean);
+
+        const raw    = result.response.text() || '';
+        const parsed = extractJSON(raw);  // ← robust extractor
+
         if (parsed.phrases && parsed.sentences) {
           return res.json({
             phrases:   parsed.phrases.slice(0, 3),
@@ -301,14 +369,16 @@ Rules:
             source: 'gemini'
           });
         }
-      } catch(e) { console.warn('predict parse fail, using fallback'); }
+      } catch (e) {
+        console.warn('Predict Gemini failed, using fallback:', e.message);
+      }
     }
 
-    // Rule-based fallback
+    // ── Rule-based fallback ───────────────────────────────────────
     const BANKS = {
-      Water:{
-        phrases:['for 3 days','leaking badly','supply cut off','dirty water','health hazard','pipeline burst','since yesterday','very low pressure','not repaired','causing flooding'],
-        sentences:[
+      Water: {
+        phrases:   ['for 3 days','leaking badly','supply cut off','dirty water','health hazard','pipeline burst','since yesterday','very low pressure','not repaired','causing flooding'],
+        sentences: [
           'The water supply has been completely cut off for the past 3 days causing severe inconvenience to residents.',
           'Dirty and contaminated water is flowing from the taps which is a serious health risk for children and elderly.',
           'We request immediate inspection and repair of the pipeline so that normal supply can be restored urgently.',
@@ -317,9 +387,9 @@ Rules:
           'The situation is becoming critical as people are forced to buy water at high cost from private vendors.'
         ]
       },
-      Roads:{
-        phrases:['causing accidents','needs urgent repair','potholes deep','blocked traffic','very dangerous','vehicles damaged','road dug up','not fixed yet','unsafe at night','residents affected'],
-        sentences:[
+      Roads: {
+        phrases:   ['causing accidents','needs urgent repair','potholes deep','blocked traffic','very dangerous','vehicles damaged','road dug up','not fixed yet','unsafe at night','residents affected'],
+        sentences: [
           'The road has multiple deep potholes that have already caused several accidents and injured two-wheeler riders.',
           'Vehicles are getting severely damaged and residents are unable to use this road during rainy season.',
           'This road was dug up for drainage work months ago but has never been properly repaired or filled.',
@@ -328,9 +398,9 @@ Rules:
           'Children going to school and senior citizens face extreme difficulty due to the terrible road condition.'
         ]
       },
-      Electricity:{
-        phrases:['since yesterday','power outage','wires sparking','pole damaged','no supply','damaging appliances','transformer fault','fluctuating badly','children at risk','urgent action'],
-        sentences:[
+      Electricity: {
+        phrases:   ['since yesterday','power outage','wires sparking','pole damaged','no supply','damaging appliances','transformer fault','fluctuating badly','children at risk','urgent action'],
+        sentences: [
           'There has been a complete power outage in our area since yesterday evening without any prior notice.',
           'The electrical wires are hanging dangerously low and sparking near the junction box creating a fire hazard.',
           'Continuous voltage fluctuation has already damaged refrigerators, televisions and other household appliances.',
@@ -339,9 +409,9 @@ Rules:
           'The broken electric pole is leaning dangerously and may fall on vehicles or pedestrians at any time.'
         ]
       },
-      Garbage:{
-        phrases:['not collected','overflowing bin','foul smell','illegal dumping','stray animals','health hazard','for 5 days','mosquito breeding','disease risk','residents suffering'],
-        sentences:[
+      Garbage: {
+        phrases:   ['not collected','overflowing bin','foul smell','illegal dumping','stray animals','health hazard','for 5 days','mosquito breeding','disease risk','residents suffering'],
+        sentences: [
           'The garbage collection vehicle has not visited our area for the past 5 days creating a serious health hazard.',
           'The overflowing dustbin is spreading a foul smell throughout the locality making it difficult to breathe.',
           'Stray dogs and animals are scattering the garbage on the road which is extremely unhygienic.',
@@ -350,9 +420,9 @@ Rules:
           'We request the sanitation department to immediately clear this garbage and resume daily collection service.'
         ]
       },
-      Drainage:{
-        phrases:['completely blocked','overflowing','sewage backup','manhole open','flooding road','foul smell','mosquito breeding','health hazard','dirty water','urgent repair'],
-        sentences:[
+      Drainage: {
+        phrases:   ['completely blocked','overflowing','sewage backup','manhole open','flooding road','foul smell','mosquito breeding','health hazard','dirty water','urgent repair'],
+        sentences: [
           'The main drain is completely blocked and dirty sewage water is overflowing onto the road and footpath.',
           'Ground floor houses are getting flooded with dirty water which is causing severe damage to property.',
           'The open manhole cover is missing and is extremely dangerous for pedestrians especially children at night.',
@@ -361,9 +431,9 @@ Rules:
           'The foul smell from the blocked drain is making it impossible for residents to open windows or doors.'
         ]
       },
-      Streetlight:{
-        phrases:['not working','dark area','flickering','bent pole','safety risk','women unsafe','accident spot','urgent repair','no lighting','since last week'],
-        sentences:[
+      Streetlight: {
+        phrases:   ['not working','dark area','flickering','bent pole','safety risk','women unsafe','accident spot','urgent repair','no lighting','since last week'],
+        sentences: [
           'The streetlight in our lane has not been functioning for over a week making the entire area pitch dark.',
           'Women and elderly residents feel extremely unsafe walking through this area after sunset every day.',
           'Two accidents have already occurred at this spot due to poor visibility caused by non-functional lights.',
@@ -372,9 +442,9 @@ Rules:
           'The damaged light pole is also leaning dangerously and could fall on passing vehicles at any time.'
         ]
       },
-      Parks:{
-        phrases:['no maintenance','broken equipment','encroached','unsafe at night','full of garbage','fence broken','weeds growing','no lighting','needs cleaning','anti-social activity'],
-        sentences:[
+      Parks: {
+        phrases:   ['no maintenance','broken equipment','encroached','unsafe at night','full of garbage','fence broken','weeds growing','no lighting','needs cleaning','anti-social activity'],
+        sentences: [
           'The park has not been cleaned or maintained for several months and is now overgrown with weeds.',
           'Playground equipment is broken and damaged posing a serious injury risk to children using the park.',
           'Anti-social elements gather in the park at night due to lack of lighting and security.',
@@ -383,9 +453,9 @@ Rules:
           'Children are unable to play safely as the swings and slides are damaged and the area is unhygienic.'
         ]
       },
-      Noise:{
-        phrases:['till midnight','above legal limit','sleep disturbed','health issues','children affected','DJ party','loudspeaker','construction noise','factory noise','daily problem'],
-        sentences:[
+      Noise: {
+        phrases:   ['till midnight','above legal limit','sleep disturbed','health issues','children affected','DJ party','loudspeaker','construction noise','factory noise','daily problem'],
+        sentences: [
           'The loud music from the nearby venue continues till well past midnight disturbing the sleep of residents.',
           'Children are unable to study and elderly residents are experiencing severe stress due to continuous noise.',
           'The noise levels are far above the legally permissible decibel limits as per noise pollution regulations.',
@@ -394,9 +464,9 @@ Rules:
           'This noise disturbance has been going on for weeks and all informal requests have been completely ignored.'
         ]
       },
-      Other:{
-        phrases:['urgent action needed','no response yet','residents affected','daily problem','please help','authorities ignoring','inconvenience','immediate repair','health risk','safety concern'],
-        sentences:[
+      Other: {
+        phrases:   ['urgent action needed','no response yet','residents affected','daily problem','please help','authorities ignoring','inconvenience','immediate repair','health risk','safety concern'],
+        sentences: [
           'This issue has been causing severe daily inconvenience to all residents in our locality for several weeks.',
           'Despite multiple verbal complaints to the ward office no action has been taken by the concerned department.',
           'We request the authorities to immediately inspect this issue and take appropriate action for public safety.',
@@ -407,10 +477,10 @@ Rules:
       }
     };
 
-    const bank  = BANKS[category] || BANKS['Other'];
-    const lower = text.toLowerCase();
-    const phrases   = bank.phrases.filter(w => !lower.includes(w.toLowerCase())).slice(0, 3);
-    const sentences = bank.sentences.filter(s => !lower.includes(s.substring(0,15).toLowerCase())).slice(0, 3);
+    const bank      = BANKS[category] || BANKS['Other'];
+    const lowerText = text.toLowerCase();
+    const phrases   = bank.phrases.filter(w => !lowerText.includes(w.toLowerCase())).slice(0, 3);
+    const sentences = bank.sentences.filter(s => !lowerText.includes(s.substring(0, 15).toLowerCase())).slice(0, 3);
 
     res.json({ phrases, sentences, source: 'fallback' });
 
@@ -421,7 +491,7 @@ Rules:
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// IMPROVE DESCRIPTION — rewrites the complaint text professionally
+// IMPROVE DESCRIPTION — rewrites complaint text professionally
 // ═══════════════════════════════════════════════════════════════════
 app.post('/api/improve', async (req, res) => {
   try {
@@ -445,20 +515,21 @@ Rules:
 - Add urgency where appropriate
 - Keep it between 3-5 sentences
 - Do NOT add new facts that were not in the original
-- Return ONLY the improved text, nothing else, no quotes, no labels`;
+- Return ONLY the improved text, nothing else, no quotes, no labels, no markdown`;
 
       try {
-        const model = getModel(GEMINI_MODEL);
-        const result = await model.generateContent({
+        const model  = getModel(GEMINI_MODEL);
+        const result = await callGeminiWithRetry(model, {
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.3, topP: 0.8, maxOutputTokens: 300 }
         });
         const improved = result.response.text()?.trim();
         if (improved) return res.json({ improved, source: 'gemini' });
-      } catch(e) { console.warn('Improve failed:', e.message); }
+      } catch (e) {
+        console.warn('Improve Gemini failed:', e.message);
+      }
     }
 
-    // Fallback — return original with note
     res.json({ improved: text, source: 'fallback', note: 'AI unavailable — original text returned' });
 
   } catch (err) {
@@ -473,10 +544,9 @@ Rules:
 app.post('/api/analyze-image', async (req, res) => {
   try {
     const { imageBase64, filename = '' } = req.body;
-
     if (!imageBase64) return res.status(400).json({ error: 'No image provided' });
 
-    // ── Try Gemini Vision first ───────────────────────────────────
+    // ── Try Gemini Vision ─────────────────────────────────────────
     if (process.env.GEMINI_API_KEY) {
       try {
         const mimeMatch = imageBase64.match(/^data:(image\/[\w+]+);base64,/);
@@ -488,7 +558,7 @@ app.post('/api/analyze-image', async (req, res) => {
         const prompt = `Analyze this image uploaded for an Indian civic complaint system.
 Identify the specific civic/municipal issue shown in the image.
 
-Return ONLY a valid JSON object (no markdown, no extra text):
+Return ONLY a valid JSON object with no markdown, no code fences, no extra text:
 {
   "detectedCategory": "one of: Roads, Water, Electricity, Garbage, Drainage, Streetlight, Parks, Noise, Other",
   "severity": "one of: Low, Medium, High",
@@ -498,15 +568,14 @@ Return ONLY a valid JSON object (no markdown, no extra text):
   "department": "Responsible government department name"
 }`;
 
-        const model = getModel(GEMINI_VISION_MODEL);
-        const result = await model.generateContent([
+        const model  = getModel(GEMINI_VISION_MODEL);
+        const result = await callGeminiWithRetry(model, [
           prompt,
           { inlineData: { mimeType, data: base64Raw } }
         ]);
 
-        const raw    = result.response.text() || '';
-        const clean  = raw.replace(/```json|```/g, '').trim();
-        const analysis = JSON.parse(clean);
+        const raw      = result.response.text() || '';
+        const analysis = extractJSON(raw);  // ← robust extractor
 
         console.log('✅ Gemini Vision analysis:', analysis.detectedCategory, analysis.severity);
         return res.json({ ...analysis, source: 'gemini-vision' });
@@ -518,8 +587,10 @@ Return ONLY a valid JSON object (no markdown, no extra text):
 
     // ── Filename-based fallback ───────────────────────────────────
     const name = filename.toLowerCase();
-    let result = { detectedCategory:'Other', severity:'Medium', estimatedDays:5,
-      confidence:0.60, description:'Civic issue detected', department:'Municipal Corporation' };
+    let result = {
+      detectedCategory: 'Other', severity: 'Medium', estimatedDays: 5,
+      confidence: 0.60, description: 'Civic issue detected', department: 'Municipal Corporation'
+    };
 
     if (name.match(/road|pothole|street|crack|highway|tarmac/))
       result = { detectedCategory:'Roads', severity:'High', estimatedDays:3, confidence:0.82,
@@ -558,7 +629,9 @@ app.post('/api/classify', (req, res) => {
   try {
     const { complaint = '' } = req.body;
     const text = complaint.toLowerCase();
-    let category = 'Other', urgency = 'Medium', department = 'Municipal Corporation';
+    let category   = 'Other';
+    let urgency    = 'Medium';
+    let department = 'Municipal Corporation';
 
     if (text.match(/water|tap|supply|leak|pipeline|jal|flood/)) {
       category = 'Water'; department = 'Jal Board / Water Supply Dept';
@@ -583,9 +656,13 @@ app.post('/api/classify', (req, res) => {
       category = 'Noise'; department = 'Police Department (Environment Wing)';
     }
 
-    const resMap = { High:'24-48 hours', Medium:'3-5 days', Low:'7-10 days' };
-    res.json({ category, urgency, department, resolution: resMap[urgency],
-      summary: complaint.substring(0, 100) + (complaint.length > 100 ? '...' : ''), confidence: 0.92 });
+    const resMap = { High: '24-48 hours', Medium: '3-5 days', Low: '7-10 days' };
+    res.json({
+      category, urgency, department,
+      resolution: resMap[urgency],
+      summary: complaint.substring(0, 100) + (complaint.length > 100 ? '...' : ''),
+      confidence: 0.92
+    });
   } catch (err) {
     res.status(500).json({ error: 'Classification failed' });
   }
@@ -631,7 +708,8 @@ app.get('/api/complaints/:id', async (req, res) => {
 app.patch('/api/complaints/:id', authenticate, adminOnly, async (req, res) => {
   try {
     const updated = await Complaint.findOneAndUpdate(
-      { id: req.params.id.toUpperCase() }, req.body, { new: true });
+      { id: req.params.id.toUpperCase() }, req.body, { new: true }
+    );
     if (!updated) return res.status(404).json({ error: 'Complaint not found' });
     res.json(updated);
   } catch (err) {
