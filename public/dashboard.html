@@ -353,29 +353,80 @@
     .ai-badge-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
     .ai-badge-value { font-size: 14px; font-weight: 600; color: white; }
 
-    /* AI Description with suggestions */
+    /* AI Prediction — 3 word chips */
     .desc-wrapper { position: relative; }
     .ai-predict-box {
-      background: rgba(255,107,0,0.1); border: 1px solid rgba(255,107,0,0.3);
-      border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
       display: none;
+      align-items: center; gap: 10px;
+      background: rgba(255,107,0,0.08);
+      border: 1px solid rgba(255,107,0,0.25);
+      border-radius: 14px; padding: 10px 14px;
+      margin-bottom: 10px; flex-wrap: wrap;
     }
-    .ai-predict-title { font-size: 11px; color: var(--saffron); font-weight: 700; letter-spacing: 0.5px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
-    .predict-text { font-size: 13px; color: var(--text-primary); line-height: 1.6; margin-bottom: 10px; cursor: pointer; }
-    .predict-text .typed { color: rgba(255,255,255,0.5); }
-    .predict-text .suggestion { color: var(--saffron); font-weight: 600; }
-    .predict-actions { display: flex; gap: 8px; }
-    .predict-btn {
-      padding: 6px 14px; border-radius: 8px; font-size: 12px;
-      border: none; cursor: pointer; font-family: 'Sora', sans-serif; font-weight: 600;
+    .ai-predict-label {
+      font-size: 10px; font-weight: 700; color: var(--saffron);
+      letter-spacing: 1px; text-transform: uppercase;
+      white-space: nowrap; display: flex; align-items: center; gap: 5px;
     }
-    .predict-btn.accept { background: rgba(255,107,0,0.2); color: var(--saffron); border: 1px solid rgba(255,107,0,0.4); }
-    .predict-btn.dismiss { background: transparent; color: var(--text-secondary); border: 1px solid var(--glass-border); }
+    .pred-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 20px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,107,0,0.35);
+      color: white; cursor: pointer; font-size: 13px;
+      font-family: 'Sora', sans-serif; font-weight: 500;
+      transition: all 0.18s; white-space: nowrap;
+    }
+    .pred-chip:hover {
+      background: rgba(255,107,0,0.2); border-color: var(--saffron);
+      color: var(--saffron); transform: translateY(-2px);
+      box-shadow: 0 4px 14px rgba(255,107,0,0.25);
+    }
+    .pred-chip-num {
+      background: rgba(255,107,0,0.3); color: var(--saffron);
+      border-radius: 50%; width: 18px; height: 18px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700; flex-shrink: 0;
+    }
+    .pred-loading { display: flex; align-items: center; gap: 5px; padding: 4px 0; }
+    .pred-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--saffron); opacity: 0.6;
+      animation: pred-bounce 1s infinite;
+    }
+    .pred-dot:nth-child(2) { animation-delay: 0.15s; }
+    .pred-dot:nth-child(3) { animation-delay: 0.30s; }
+    @keyframes pred-bounce {
+      0%,100% { transform: translateY(0); opacity: 0.4; }
+      50%      { transform: translateY(-5px); opacity: 1; }
+    }
+    /* 3 sentence suggestions */
+    .pred-sents-label {
+      font-size: 10px; color: #64b5f6; font-weight: 700;
+      letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px;
+    }
+    .pred-sents-list { display: flex; flex-direction: column; gap: 6px; }
+    .pred-sent-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 12px; border-radius: 10px;
+      background: rgba(100,181,246,0.07);
+      border: 1px solid rgba(100,181,246,0.2);
+      cursor: pointer; transition: all 0.18s;
+    }
+    .pred-sent-item:hover {
+      background: rgba(100,181,246,0.18);
+      border-color: rgba(100,181,246,0.5);
+      transform: translateX(3px);
+    }
+    .pred-sent-num {
+      background: rgba(100,181,246,0.25); color: #64b5f6;
+      border-radius: 50%; width: 20px; height: 20px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; margin-top: 1px;
+    }
+    .pred-sent-text { font-size: 13px; color: rgba(255,255,255,0.88); line-height: 1.6; }
 
-    /* Word chips under textarea */
-    .word-chip-row {
-      display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
-    }
+    .word-chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 
     /* Location */
     #formMap { height: 260px; border-radius: 14px; overflow: hidden; margin-bottom: 14px; border: 1px solid var(--glass-border); }
@@ -671,22 +722,33 @@
             <div class="form-group">
               <label>Description * <span style="color: var(--saffron); font-size: 11px;">(AI will help you complete)</span></label>
               <div class="desc-wrapper">
-                <!-- AI Prediction box -->
-                <div class="ai-predict-box" id="aiPredictionBox">
-                  <div class="ai-predict-title">✨ AI SUGGESTION <span style="color:var(--text-secondary); font-weight:400; margin-left:6px;">— Press TAB to accept</span></div>
-                  <div class="predict-text" id="predictionText" onclick="acceptPrediction()"></div>
-                  <div class="predict-actions">
-                    <button class="predict-btn accept" onclick="acceptPrediction()">✅ Accept (Tab)</button>
-                    <button class="predict-btn dismiss" onclick="dismissPrediction()">✕ Ignore</button>
+                <!-- AI Prediction: 3 chips + 3 sentences + improve button -->
+                <div class="ai-predict-box" id="aiPredictionBox" style="flex-direction:column;gap:10px;">
+                  <!-- Row 1: label + 3 word chips -->
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <span class="ai-predict-label">🤖 AI</span>
+                    <div id="predictionChips" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
                   </div>
+                  <!-- Row 2: 3 sentence suggestions -->
+                  <div id="predictionSentences" style="display:none;"></div>
                 </div>
-                <textarea id="formDescription" rows="5" 
-                          placeholder="Start typing… AI will suggest sentence completions. E.g., 'Water pipeline is leaking…'"
+                <textarea id="formDescription" rows="5"
+                          placeholder="Start typing your complaint… e.g. Water pipeline is leaking near my house…"
                           oninput="smartPredict(this)"
                           onkeydown="handlePredictionKey(event)"></textarea>
               </div>
-              <!-- 3 word suggestions -->
-              <div class="word-chip-row" id="wordSuggestions"></div>
+              <!-- Improve button -->
+              <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+                <button id="improveBtn" type="button" onclick="improveDescription()"
+                  style="display:flex;align-items:center;gap:6px;padding:8px 16px;border-radius:20px;
+                         background:rgba(100,181,246,0.12);border:1px solid rgba(100,181,246,0.35);
+                         color:#64b5f6;font-size:12px;font-weight:700;cursor:pointer;
+                         font-family:'Sora',sans-serif;transition:all 0.2s;"
+                  onmouseover="this.style.background='rgba(100,181,246,0.25)'"
+                  onmouseout="this.style.background='rgba(100,181,246,0.12)'">
+                  ✨ Improve with AI
+                </button>
+              </div>
             </div>
 
             <div class="btn-row">

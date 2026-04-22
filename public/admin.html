@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEVAK Admin - Civic Management</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #FF6B00;
+            --primary-hover: #ff8533;
+            --bg-dark: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text-main: #f8fafc;
+            --text-sec: #94a3b8;
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: rgba(15, 23, 42, 0.95);
+            border-right: 1px solid var(--border);
+            padding: 30px 20px;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 24px;
+            font-weight: 800;
+            margin-bottom: 50px;
+            color: white;
+        }
+
+        .logo i {
+            color: var(--primary);
+            background: rgba(255, 107, 0, 0.1);
+            padding: 10px;
+            border-radius: 12px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            color: var(--text-sec);
+            text-decoration: none;
+            border-radius: 12px;
+            transition: 0.3s;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background: rgba(255, 107, 0, 0.1);
+            color: var(--primary);
+        }
+
+        /* Main Content */
+        .main {
+            flex: 1;
+            padding: 40px;
+            overflow-y: auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 24px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-val { font-size: 28px; font-weight: 700; margin: 10px 0; }
+        .stat-label { color: var(--text-sec); font-size: 14px; }
+
+        /* Table */
+        .table-container {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: rgba(255, 255, 255, 0.03); padding: 18px 24px; text-align: left; color: var(--text-sec); font-size: 13px; }
+        td { padding: 18px 24px; border-bottom: 1px solid var(--border); font-size: 14px; }
+
+        .badge {
+            padding: 6px 12px;
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-Pending { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+        .status-In-Progress { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+        .status-Resolved { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+
+        .btn-action {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: white;
+            padding: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            top:0; left:0; width:100%; height:100%;
+            background: rgba(0,0,0,0.8);
+            display:none; align-items:center; justify-content:center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 24px;
+            width: 400px;
+            border: 1px solid var(--border);
+        }
+
+        select {
+            width: 100%; padding: 12px; background: #0f172a; border: 1px solid var(--border);
+            border-radius: 10px; color: white; margin: 20px 0;
+        }
+
+        .btn-save {
+            width: 100%; padding: 14px; background: var(--primary); border: none;
+            border-radius: 12px; color: white; font-weight: 600; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo"><i class="fas fa-landmark"></i> <span>SEVAK Admin</span></div>
+        <div class="nav-item active"><i class="fas fa-home"></i> Dashboard</div>
+        <div class="nav-item" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</div>
+    </div>
+
+    <div class="main">
+        <div class="header"><h1>Civic Complaints</h1> <div id="adminName">Admin</div></div>
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-label">Total</div><div class="stat-val" id="totalCount">0</div></div>
+            <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-val" id="pendingCount">0</div></div>
+            <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-val" id="progressCount">0</div></div>
+            <div class="stat-card"><div class="stat-label">Resolved</div><div class="stat-val" id="resolvedCount">0</div></div>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Category</th><th>Status</th><th>Date</th><th>Action</th></tr>
+                </thead>
+                <tbody id="complaintTable"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="updateModal" class="modal">
+        <div class="modal-content">
+            <h3>Update Status</h3>
+            <select id="newStatus">
+                <option value="Pending">Pending</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Resolved">Resolved</option>
+            </select>
+            <button class="btn-save" onclick="saveUpdate()">Save Changes</button>
+            <button class="btn-action" style="width:100%; margin-top:10px" onclick="closeModal()">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        let complaints = [];
+        let editingId = null;
+
+        async function loadData() {
+            const res = await fetch('/api/complaints', {
+                headers: { 'Authorization': `Bearer ${user.token}` }
+            });
+            complaints = await res.json();
+            render();
+        }
+
+        function render() {
+            const tbody = document.getElementById('complaintTable');
+            tbody.innerHTML = complaints.map(c => `
+                <tr>
+                    <td>${c.id}</td>
+                    <td>${c.category}</td>
+                    <td><span class="badge status-${c.status.replace(' ', '-')}">${c.status}</span></td>
+                    <td>${new Date(c.createdAt).toLocaleDateString()}</td>
+                    <td><button class="btn-action" onclick="openModal('${c.id}')"><i class="fas fa-edit"></i></button></td>
+                </tr>
+            `).join('');
+
+            document.getElementById('totalCount').textContent = complaints.length;
+            document.getElementById('pendingCount').textContent = complaints.filter(c => c.status === 'Pending').length;
+            document.getElementById('progressCount').textContent = complaints.filter(c => c.status === 'In Progress').length;
+            document.getElementById('resolvedCount').textContent = complaints.filter(c => c.status === 'Resolved').length;
+        }
+
+        function openModal(id) { editingId = id; document.getElementById('updateModal').style.display = 'flex'; }
+        function closeModal() { document.getElementById('updateModal').style.display = 'none'; }
+
+        async function saveUpdate() {
+            const status = document.getElementById('newStatus').value;
+            await fetch('/api/complaints/' + editingId, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${user.token}`
+                },
+                body: JSON.stringify({ status })
+            });
+            closeModal(); loadData();
+        }
+
+        function logout() { localStorage.removeItem('sevak_user'); window.location.href = '/'; }
+
+        const user = JSON.parse(localStorage.getItem('sevak_user') || '{}');
+        if (user.role !== 'admin') window.location.href = '/';
+        else { document.getElementById('adminName').textContent = user.name; loadData(); }
+    </script>
+</body>
+</html>
