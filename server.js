@@ -18,11 +18,12 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ═══════════════════════════════════════════════════════════════════
 // MODEL CONFIG
-// gemini-1.5-flash is DEAD (retired April 2025) → use gemini-2.5-flash
-// Free tier: 15 RPM, 1500 RPD, no credit card needed
+// Free tier limits (as of April 2026):
+//   gemini-2.5-flash      →   20 req/day  ← TOO LOW
+//   gemini-2.5-flash-lite → 1000 req/day  ← USE THIS
 // ═══════════════════════════════════════════════════════════════════
-const GEMINI_MODEL        = 'gemini-2.5-flash';   // for chat, predict, improve
-const GEMINI_VISION_MODEL = 'gemini-2.5-flash';   // supports vision/multimodal
+const GEMINI_MODEL        = 'gemini-2.5-flash-lite';
+const GEMINI_VISION_MODEL = 'gemini-2.5-flash-lite';
 
 const AI_CONFIG = {
   temperature: 0.3,
@@ -30,30 +31,24 @@ const AI_CONFIG = {
   max_tokens: 500
 };
 
-// Initialize SDK
-const genAI   = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'MISSING');
+const genAI    = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'MISSING');
 const getModel = (name) => genAI.getGenerativeModel({ model: name });
 
 // ═══════════════════════════════════════════════════════════════════
-// HELPERS
+// HELPER: Retry wrapper — handles 503 overload, skips 429 quota errors
 // ═══════════════════════════════════════════════════════════════════
-
-/**
- * Retry wrapper for Gemini calls.
- * Handles 503 Service Unavailable (high demand) with exponential back-off.
- */
-async function callGeminiWithRetry(model, payload, retries = 3, delayMs = 2000) {
+async function callGeminiWithRetry(model, payload, retries = 3, delayMs = 3000) {
   for (let i = 0; i < retries; i++) {
     try {
       return await model.generateContent(payload);
     } catch (err) {
-      const is503 =
-        err.message?.includes('503') ||
-        err.message?.includes('Service Unavailable') ||
-        err.message?.includes('high demand');
+      const msg = err.message || '';
+      const is429 = msg.includes('429') || msg.includes('quota') || msg.includes('Too Many Requests');
+      if (is429) throw err; // Don't retry quota errors — needs 40-50s, not worth it
 
+      const is503 = msg.includes('503') || msg.includes('Service Unavailable') || msg.includes('high demand');
       if (is503 && i < retries - 1) {
-        const wait = delayMs * (i + 1); // 2s, 4s, 6s
+        const wait = delayMs * (i + 1);
         console.warn(`⚠️  Gemini 503 – retrying in ${wait}ms (attempt ${i + 1}/${retries})`);
         await new Promise(r => setTimeout(r, wait));
       } else {
@@ -63,23 +58,23 @@ async function callGeminiWithRetry(model, payload, retries = 3, delayMs = 2000) 
   }
 }
 
-/**
- * Robust JSON extractor.
- * Handles: plain JSON, ```json ... ```, ``` ... ```, preamble text + JSON block.
- */
+// ═══════════════════════════════════════════════════════════════════
+// HELPER: Robust JSON extractor
+// Handles: plain JSON, ```json...```, preamble + JSON block
+// ═══════════════════════════════════════════════════════════════════
 function extractJSON(raw) {
-  if (!raw) throw new Error('Empty response');
+  if (!raw) throw new Error('Empty response from Gemini');
 
   // 1. Direct parse
   try { return JSON.parse(raw.trim()); } catch {}
 
-  // 2. Markdown code fence  ```json ... ```  or  ``` ... ```
+  // 2. Strip markdown code fences
   const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) {
     try { return JSON.parse(fenceMatch[1].trim()); } catch {}
   }
 
-  // 3. Find first { ... } block anywhere in the string
+  // 3. Find first { ... } block
   const start = raw.indexOf('{');
   const end   = raw.lastIndexOf('}');
   if (start !== -1 && end !== -1 && end > start) {
@@ -94,12 +89,12 @@ function extractJSON(raw) {
 // ═══════════════════════════════════════════════════════════════════
 console.log('✅ SEVAK Server starting...');
 console.log('PORT       :', process.env.PORT || 3000);
-console.log('MONGO_URI  :', process.env.MONGO_URI   ? '✅ Found' : '❌ MISSING');
+console.log('MONGO_URI  :', process.env.MONGO_URI      ? '✅ Found' : '❌ MISSING');
 console.log('GEMINI_KEY :', process.env.GEMINI_API_KEY ? '✅ Found' : '❌ MISSING');
 console.log('MODEL      :', GEMINI_MODEL);
 
 if (!process.env.MONGO_URI) {
-  console.error('❌ MONGO_URI is required. Add it to your .env or Render environment variables.');
+  console.error('❌ MONGO_URI is required. Add it to Render environment variables.');
   process.exit(1);
 }
 if (!process.env.GEMINI_API_KEY) {
@@ -116,7 +111,7 @@ mongoose.connect(process.env.MONGO_URI)
 // ─── Schemas ──────────────────────────────────────────────────────
 const userSchema = new mongoose.Schema({
   username:  { type: String, required: true },
-  email:     { type: String, unique: true, required: true, lowercase: true },
+  email:     { type: String, unique: true, required: true, lowercase: true, trim: true },
   password:  { type: String, required: true },
   name:      String,
   role:      { type: String, enum: ['user', 'admin'], default: 'user' },
@@ -159,12 +154,12 @@ async function seedAdmin() {
   try {
     const exists = await User.findOne({ email: 'admin@sevak.gov' });
     if (!exists) {
-      const hashedPassword = await bcrypt.hash('admin123', 10);
+      const hashedPassword = await bcrypt.hash('admin123', 12);
       await User.create({
         username: 'admin', email: 'admin@sevak.gov',
         password: hashedPassword, name: 'Administrator', role: 'admin'
       });
-      console.log('✅ Admin created → admin@sevak.gov / admin123 (hashed)');
+      console.log('✅ Admin created → admin@sevak.gov / admin123');
     }
   } catch (err) { console.error('Seed error:', err.message); }
 }
@@ -174,49 +169,84 @@ async function seedAdmin() {
 // ═══════════════════════════════════════════════════════════════════
 app.get('/health', (req, res) => res.json({
   status: 'ok', message: 'SEVAK running 🚀',
-  mongo:  mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-  model:  GEMINI_MODEL,
-  gemini: process.env.GEMINI_API_KEY ? 'configured' : 'missing'
+  mongo:   mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+  model:   GEMINI_MODEL,
+  gemini:  process.env.GEMINI_API_KEY ? 'configured' : 'missing'
 }));
 
 // ═══════════════════════════════════════════════════════════════════
-// AUTH
+// AUTH — SIGNUP
+// FIX: proper email normalization, detailed error messages, duplicate key handling
 // ═══════════════════════════════════════════════════════════════════
 app.post('/api/signup', async (req, res) => {
   try {
+    console.log('📝 Signup attempt:', req.body?.email);
     const { username, email, password } = req.body;
-    if (!username || !email || !password)
-      return res.status(400).json({ error: 'All fields are required' });
-    if (password.length < 6)
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    if (await User.findOne({ email: email.toLowerCase() }))
-      return res.status(400).json({ error: 'Email is already registered' });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    if (!username || !email || !password)
+      return res.status(400).json({ success: false, error: 'All fields are required' });
+    if (password.length < 6)
+      return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const existing = await User.findOne({ email: normalizedEmail });
+    if (existing) {
+      console.log('⚠️  Signup rejected: email already exists →', normalizedEmail);
+      return res.status(400).json({ success: false, error: 'This email is already registered. Please login instead.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
     const user = await User.create({
-      username, email: email.toLowerCase(),
-      password: hashedPassword, name: username, role: 'user'
+      username:  username.trim(),
+      email:     normalizedEmail,
+      password:  hashedPassword,
+      name:      username.trim(),
+      role:      'user'
     });
-    res.json({
+
+    console.log('✅ New user created:', normalizedEmail);
+    res.status(201).json({
       success: true,
-      message: 'Account created! Please login.',
+      message: 'Account created successfully! Please login.',
       user: { username: user.username, email: user.email, role: user.role }
     });
+
   } catch (err) {
-    console.error('Signup error:', err.message);
-    res.status(500).json({ error: 'Signup failed. Please try again.' });
+    console.error('❌ Signup error:', err.message);
+    if (err.code === 11000) {
+      // MongoDB duplicate key (race condition safety net)
+      return res.status(400).json({ success: false, error: 'This email is already registered. Please login instead.' });
+    }
+    res.status(500).json({ success: false, error: 'Signup failed. Please try again.' });
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// AUTH — LOGIN
+// FIX: normalize email + trim before lookup, added logging to debug issues
+// ═══════════════════════════════════════════════════════════════════
 app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password)
-      return res.status(400).json({ error: 'Email and password are required' });
+    console.log('🔑 Login attempt:', email);
 
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user || !(await bcrypt.compare(password, user.password)))
-      return res.status(401).json({ error: 'Invalid email or password' });
+    if (!email || !password)
+      return res.status(400).json({ success: false, error: 'Email and password are required' });
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
+
+    if (!user) {
+      console.log('❌ Login failed: no user found for →', normalizedEmail);
+      return res.status(401).json({ success: false, error: 'Invalid email or password' });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      console.log('❌ Login failed: wrong password for →', normalizedEmail);
+      return res.status(401).json({ success: false, error: 'Invalid email or password' });
+    }
 
     const token = jwt.sign(
       { email: user.email, role: user.role, username: user.username },
@@ -224,14 +254,20 @@ app.post('/api/login', async (req, res) => {
       { expiresIn: '24h' }
     );
 
+    console.log('✅ Login success:', normalizedEmail, '| role:', user.role);
     res.json({
-      success: true, token,
-      username: user.username, email: user.email,
-      name: user.name || user.username, role: user.role, phone: user.phone || ''
+      success:  true,
+      token,
+      username: user.username,
+      email:    user.email,
+      name:     user.name || user.username,
+      role:     user.role,
+      phone:    user.phone || ''
     });
+
   } catch (err) {
-    console.error('Login error:', err.message);
-    res.status(500).json({ error: 'Login failed. Please try again.' });
+    console.error('❌ Login error:', err.message);
+    res.status(500).json({ success: false, error: 'Login failed. Please try again.' });
   }
 });
 
@@ -256,7 +292,7 @@ const adminOnly = (req, res, next) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// CHAT — gemini-2.5-flash
+// CHAT
 // ═══════════════════════════════════════════════════════════════════
 app.post('/api/chat', async (req, res) => {
   try {
@@ -269,14 +305,11 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Invalid message format' });
 
     const lower = userMessage.toLowerCase();
-
-    // Domain guard
     const NON_CIVIC = [
-      'prime minister','modi','rahul','election','vote',
-      'parliament','minister','congress','bjp','president of','chief minister',
-      'cricket','ipl','bollywood','movie','actor','actress','sports',
-      'football','hockey','recipe','joke','weather forecast','stock market',
-      'share price','dating','relationship'
+      'prime minister','modi','rahul','election','vote','parliament','minister',
+      'congress','bjp','president of','chief minister','cricket','ipl','bollywood',
+      'movie','actor','actress','sports','football','hockey','recipe','joke',
+      'weather forecast','stock market','share price','dating','relationship'
     ];
 
     if (NON_CIVIC.some(kw => lower.includes(kw))) {
@@ -287,10 +320,7 @@ app.post('/api/chat', async (req, res) => {
     }
 
     if (!process.env.GEMINI_API_KEY) {
-      return res.json({
-        reply: "I can help you file civic complaints about roads, water, electricity, garbage, and more. What issue are you facing?",
-        fallback: true
-      });
+      return res.json({ reply: "I can help you file civic complaints about roads, water, electricity, garbage, and more. What issue are you facing?", fallback: true });
     }
 
     const SYSTEM = `You are SEVAK (सेवक), an AI assistant EXCLUSIVELY for Indian municipal/civic complaints.
@@ -303,11 +333,7 @@ RULES:
     const model  = getModel(GEMINI_MODEL);
     const result = await callGeminiWithRetry(model, {
       contents: [{ role: 'user', parts: [{ text: SYSTEM + '\n\nUser: ' + userMessage }] }],
-      generationConfig: {
-        temperature: AI_CONFIG.temperature,
-        topP: AI_CONFIG.top_p,
-        maxOutputTokens: AI_CONFIG.max_tokens
-      }
+      generationConfig: { temperature: AI_CONFIG.temperature, topP: AI_CONFIG.top_p, maxOutputTokens: AI_CONFIG.max_tokens }
     });
 
     const reply = result.response.text() || "I'm here to help with civic complaints. What issue are you facing?";
@@ -315,16 +341,12 @@ RULES:
 
   } catch (err) {
     console.error('Chat error:', err.message);
-    res.json({
-      reply: "I can help with civic complaints — roads, water, electricity, garbage, and more. What problem are you facing?",
-      fallback: true
-    });
+    res.json({ reply: "I can help with civic complaints — roads, water, electricity, garbage, and more. What problem are you facing?", fallback: true });
   }
 });
 
 // ═══════════════════════════════════════════════════════════════════
 // PREDICT — 3 word chips + 3 next sentences
-// Returns: { phrases:[...], sentences:[s1,s2,s3] }
 // ═══════════════════════════════════════════════════════════════════
 app.post('/api/predict', async (req, res) => {
   try {
@@ -336,38 +358,21 @@ app.post('/api/predict', async (req, res) => {
 Category: ${category}
 Current text: "${text}"
 
-Return ONLY valid JSON with no markdown, no code fences, no preamble:
-{
-  "phrases": ["2-4 word chip 1","2-4 word chip 2","2-4 word chip 3"],
-  "sentences": [
-    "Complete next sentence 1 (10-18 words, naturally continues current text)",
-    "Complete next sentence 2 (10-18 words, different angle or detail)",
-    "Complete next sentence 3 (10-18 words, adds urgency or impact)"
-  ]
-}
-Rules:
-- phrases: 3 short options, 2-4 words each, civic topic only
-- sentences: 3 DIFFERENT complete sentences, each adding new detail
-- sentences must continue from EXACTLY where current text ends
-- do NOT repeat what is already in current text
-- civic/municipal topics only: roads, water, electricity, garbage, drainage, noise, parks`;
+Return ONLY a raw JSON object. No markdown. No code fences. No explanation. Start your response with { and end with }:
+{"phrases":["2-4 word chip 1","2-4 word chip 2","2-4 word chip 3"],"sentences":["Sentence 1 continuing the text (10-18 words)","Sentence 2 with different detail (10-18 words)","Sentence 3 adding urgency (10-18 words)"]}
+
+Rules: civic/municipal topics only, do NOT repeat text already written, sentences continue from where current text ends.`;
 
       try {
         const model  = getModel(GEMINI_MODEL);
         const result = await callGeminiWithRetry(model, {
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.4, topP: 0.85, maxOutputTokens: 300 }
+          generationConfig: { temperature: 0.4, topP: 0.85, maxOutputTokens: 350 }
         });
-
         const raw    = result.response.text() || '';
-        const parsed = extractJSON(raw);  // ← robust extractor
-
+        const parsed = extractJSON(raw);
         if (parsed.phrases && parsed.sentences) {
-          return res.json({
-            phrases:   parsed.phrases.slice(0, 3),
-            sentences: parsed.sentences.slice(0, 3),
-            source: 'gemini'
-          });
+          return res.json({ phrases: parsed.phrases.slice(0, 3), sentences: parsed.sentences.slice(0, 3), source: 'gemini' });
         }
       } catch (e) {
         console.warn('Predict Gemini failed, using fallback:', e.message);
@@ -403,7 +408,7 @@ Rules:
         sentences: [
           'There has been a complete power outage in our area since yesterday evening without any prior notice.',
           'The electrical wires are hanging dangerously low and sparking near the junction box creating a fire hazard.',
-          'Continuous voltage fluctuation has already damaged refrigerators, televisions and other household appliances.',
+          'Continuous voltage fluctuation has already damaged refrigerators televisions and other household appliances.',
           'We request the electricity department to restore power immediately and inspect the damaged transformer.',
           'Children and elderly residents are suffering due to extreme heat without fans or air conditioning at night.',
           'The broken electric pole is leaning dangerously and may fall on vehicles or pedestrians at any time.'
@@ -481,7 +486,6 @@ Rules:
     const lowerText = text.toLowerCase();
     const phrases   = bank.phrases.filter(w => !lowerText.includes(w.toLowerCase())).slice(0, 3);
     const sentences = bank.sentences.filter(s => !lowerText.includes(s.substring(0, 15).toLowerCase())).slice(0, 3);
-
     res.json({ phrases, sentences, source: 'fallback' });
 
   } catch (err) {
@@ -491,7 +495,7 @@ Rules:
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// IMPROVE DESCRIPTION — rewrites complaint text professionally
+// IMPROVE DESCRIPTION
 // ═══════════════════════════════════════════════════════════════════
 app.post('/api/improve', async (req, res) => {
   try {
@@ -502,20 +506,14 @@ app.post('/api/improve', async (req, res) => {
     if (process.env.GEMINI_API_KEY) {
       const prompt = `You are an expert at writing formal civic complaints for Indian government portals.
 
-Original complaint description written by a citizen:
-"${text}"
-
+Original complaint: "${text}"
 Category: ${category}
 
-Rewrite this as a clear, professional, formal complaint description.
-Rules:
-- Keep all the facts and details from the original
-- Fix grammar, spelling and sentence structure
-- Make it formal and suitable for a government complaint portal
-- Add urgency where appropriate
-- Keep it between 3-5 sentences
-- Do NOT add new facts that were not in the original
-- Return ONLY the improved text, nothing else, no quotes, no labels, no markdown`;
+Rewrite as clear, professional, formal complaint. Rules:
+- Keep all original facts, fix grammar/spelling
+- Formal tone, suitable for government portal, add urgency
+- 3-5 sentences only
+- Return ONLY the improved text. No quotes, no labels, no markdown.`;
 
       try {
         const model  = getModel(GEMINI_MODEL);
@@ -531,7 +529,6 @@ Rules:
     }
 
     res.json({ improved: text, source: 'fallback', note: 'AI unavailable — original text returned' });
-
   } catch (err) {
     console.error('Improve error:', err.message);
     res.status(500).json({ error: 'Improve failed' });
@@ -539,34 +536,23 @@ Rules:
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// AI IMAGE ANALYSIS — gemini-2.5-flash vision
+// AI IMAGE ANALYSIS
 // ═══════════════════════════════════════════════════════════════════
 app.post('/api/analyze-image', async (req, res) => {
   try {
     const { imageBase64, filename = '' } = req.body;
     if (!imageBase64) return res.status(400).json({ error: 'No image provided' });
 
-    // ── Try Gemini Vision ─────────────────────────────────────────
     if (process.env.GEMINI_API_KEY) {
       try {
         const mimeMatch = imageBase64.match(/^data:(image\/[\w+]+);base64,/);
-        if (!mimeMatch) throw new Error('Invalid base64 format');
+        if (!mimeMatch) throw new Error('Invalid base64 image format');
 
         const mimeType  = mimeMatch[1];
         const base64Raw = imageBase64.replace(/^data:image\/[\w+]+;base64,/, '');
 
-        const prompt = `Analyze this image uploaded for an Indian civic complaint system.
-Identify the specific civic/municipal issue shown in the image.
-
-Return ONLY a valid JSON object with no markdown, no code fences, no extra text:
-{
-  "detectedCategory": "one of: Roads, Water, Electricity, Garbage, Drainage, Streetlight, Parks, Noise, Other",
-  "severity": "one of: Low, Medium, High",
-  "estimatedDays": 3,
-  "confidence": 0.92,
-  "description": "Clear 1-sentence description of the exact issue visible in the image",
-  "department": "Responsible government department name"
-}`;
+        const prompt = `Analyze this image from an Indian civic complaint system. Return ONLY raw JSON, no markdown, start with {:
+{"detectedCategory":"Roads|Water|Electricity|Garbage|Drainage|Streetlight|Parks|Noise|Other","severity":"Low|Medium|High","estimatedDays":3,"confidence":0.90,"description":"One sentence describing the exact issue","department":"Responsible government department"}`;
 
         const model  = getModel(GEMINI_VISION_MODEL);
         const result = await callGeminiWithRetry(model, [
@@ -575,8 +561,7 @@ Return ONLY a valid JSON object with no markdown, no code fences, no extra text:
         ]);
 
         const raw      = result.response.text() || '';
-        const analysis = extractJSON(raw);  // ← robust extractor
-
+        const analysis = extractJSON(raw);
         console.log('✅ Gemini Vision analysis:', analysis.detectedCategory, analysis.severity);
         return res.json({ ...analysis, source: 'gemini-vision' });
 
@@ -585,34 +570,24 @@ Return ONLY a valid JSON object with no markdown, no code fences, no extra text:
       }
     }
 
-    // ── Filename-based fallback ───────────────────────────────────
+    // Filename fallback
     const name = filename.toLowerCase();
-    let result = {
-      detectedCategory: 'Other', severity: 'Medium', estimatedDays: 5,
-      confidence: 0.60, description: 'Civic issue detected', department: 'Municipal Corporation'
-    };
+    let result = { detectedCategory:'Other', severity:'Medium', estimatedDays:5, confidence:0.60, description:'Civic issue detected', department:'Municipal Corporation' };
 
-    if (name.match(/road|pothole|street|crack|highway|tarmac/))
-      result = { detectedCategory:'Roads', severity:'High', estimatedDays:3, confidence:0.82,
-        description:'Road damage or pothole visible in image', department:'Public Works Department (PWD)' };
+    if      (name.match(/road|pothole|street|crack|highway/))
+      result = { detectedCategory:'Roads',       severity:'High',   estimatedDays:3,  confidence:0.82, description:'Road damage or pothole visible',         department:'Public Works Department (PWD)' };
     else if (name.match(/water|leak|tap|pipe|flood|pipeline/))
-      result = { detectedCategory:'Water', severity:'High', estimatedDays:1, confidence:0.85,
-        description:'Water leakage or pipeline issue visible', department:'Jal Board / Water Supply Dept' };
-    else if (name.match(/garbage|trash|waste|dump|litter|rubbish/))
-      result = { detectedCategory:'Garbage', severity:'Medium', estimatedDays:2, confidence:0.80,
-        description:'Garbage accumulation visible in image', department:'Sanitation Department' };
-    else if (name.match(/electric|wire|pole|transformer|spark|cable/))
-      result = { detectedCategory:'Electricity', severity:'High', estimatedDays:1, confidence:0.83,
-        description:'Electrical hazard visible in image', department:'Electricity Board / DISCOM' };
+      result = { detectedCategory:'Water',       severity:'High',   estimatedDays:1,  confidence:0.85, description:'Water leakage or pipeline issue visible', department:'Jal Board / Water Supply Dept' };
+    else if (name.match(/garbage|trash|waste|dump|litter/))
+      result = { detectedCategory:'Garbage',     severity:'Medium', estimatedDays:2,  confidence:0.80, description:'Garbage accumulation visible',            department:'Sanitation Department' };
+    else if (name.match(/electric|wire|pole|transformer|spark/))
+      result = { detectedCategory:'Electricity', severity:'High',   estimatedDays:1,  confidence:0.83, description:'Electrical hazard visible',               department:'Electricity Board / DISCOM' };
     else if (name.match(/light|lamp|streetlight|dark/))
-      result = { detectedCategory:'Streetlight', severity:'Low', estimatedDays:7, confidence:0.78,
-        description:'Non-functional streetlight visible', department:'Electricity Department' };
+      result = { detectedCategory:'Streetlight', severity:'Low',    estimatedDays:7,  confidence:0.78, description:'Non-functional streetlight visible',      department:'Electricity Department' };
     else if (name.match(/drain|sewer|manhole|clog/))
-      result = { detectedCategory:'Drainage', severity:'High', estimatedDays:2, confidence:0.81,
-        description:'Drainage blockage or sewage issue visible', department:'Drainage Dept / City Engineer' };
+      result = { detectedCategory:'Drainage',    severity:'High',   estimatedDays:2,  confidence:0.81, description:'Drainage blockage or sewage issue',       department:'Drainage Dept / City Engineer' };
     else if (name.match(/park|garden|tree|bench|playground/))
-      result = { detectedCategory:'Parks', severity:'Low', estimatedDays:10, confidence:0.75,
-        description:'Park maintenance issue visible', department:'Parks & Recreation Department' };
+      result = { detectedCategory:'Parks',       severity:'Low',    estimatedDays:10, confidence:0.75, description:'Park maintenance issue visible',          department:'Parks & Recreation Department' };
 
     res.json({ ...result, source: 'filename-fallback' });
 
@@ -629,40 +604,28 @@ app.post('/api/classify', (req, res) => {
   try {
     const { complaint = '' } = req.body;
     const text = complaint.toLowerCase();
-    let category   = 'Other';
-    let urgency    = 'Medium';
-    let department = 'Municipal Corporation';
+    let category = 'Other', urgency = 'Medium', department = 'Municipal Corporation';
 
-    if (text.match(/water|tap|supply|leak|pipeline|jal|flood/)) {
-      category = 'Water'; department = 'Jal Board / Water Supply Dept';
-      if (text.match(/leak|burst|flood|no supply|cut/)) urgency = 'High';
-    } else if (text.match(/road|pothole|street|highway|damage|crack/)) {
-      category = 'Roads'; department = 'Public Works Department (PWD)';
-      if (text.match(/accident|danger|broken/)) urgency = 'High';
-    } else if (text.match(/electric|power|current|voltage|wire|pole|transformer/)) {
-      category = 'Electricity'; department = 'Electricity Board / DISCOM';
-      if (text.match(/spark|fire|danger|outage|no power/)) urgency = 'High';
-    } else if (text.match(/garbage|trash|waste|smell|dustbin|dump/)) {
-      category = 'Garbage'; department = 'Sanitation Department';
-      if (text.match(/smell|health|hazard/)) urgency = 'High';
-    } else if (text.match(/drain|sewage|clog|block|overflow|manhole|sewer/)) {
-      category = 'Drainage'; department = 'Drainage Department / City Engineer';
-      if (text.match(/overflow|flood|backing/)) urgency = 'High';
-    } else if (text.match(/streetlight|street light|lamp post|dark road/)) {
-      category = 'Streetlight'; department = 'Electricity Department'; urgency = 'Low';
-    } else if (text.match(/park|garden|tree|bench|playground/)) {
-      category = 'Parks'; department = 'Parks & Recreation Department'; urgency = 'Low';
-    } else if (text.match(/noise|loud|sound|music|dj|speaker/)) {
-      category = 'Noise'; department = 'Police Department (Environment Wing)';
-    }
+    if      (text.match(/water|tap|supply|leak|pipeline|jal|flood/))
+      { category='Water'; department='Jal Board / Water Supply Dept'; if(text.match(/leak|burst|flood|no supply|cut/)) urgency='High'; }
+    else if (text.match(/road|pothole|street|highway|damage|crack/))
+      { category='Roads'; department='Public Works Department (PWD)'; if(text.match(/accident|danger|broken/)) urgency='High'; }
+    else if (text.match(/electric|power|current|voltage|wire|pole|transformer/))
+      { category='Electricity'; department='Electricity Board / DISCOM'; if(text.match(/spark|fire|danger|outage|no power/)) urgency='High'; }
+    else if (text.match(/garbage|trash|waste|smell|dustbin|dump/))
+      { category='Garbage'; department='Sanitation Department'; if(text.match(/smell|health|hazard/)) urgency='High'; }
+    else if (text.match(/drain|sewage|clog|block|overflow|manhole|sewer/))
+      { category='Drainage'; department='Drainage Department / City Engineer'; if(text.match(/overflow|flood|backing/)) urgency='High'; }
+    else if (text.match(/streetlight|street light|lamp post|dark road/))
+      { category='Streetlight'; department='Electricity Department'; urgency='Low'; }
+    else if (text.match(/park|garden|tree|bench|playground/))
+      { category='Parks'; department='Parks & Recreation Department'; urgency='Low'; }
+    else if (text.match(/noise|loud|sound|music|dj|speaker/))
+      { category='Noise'; department='Police Department (Environment Wing)'; }
 
-    const resMap = { High: '24-48 hours', Medium: '3-5 days', Low: '7-10 days' };
-    res.json({
-      category, urgency, department,
-      resolution: resMap[urgency],
-      summary: complaint.substring(0, 100) + (complaint.length > 100 ? '...' : ''),
-      confidence: 0.92
-    });
+    const resMap = { High:'24-48 hours', Medium:'3-5 days', Low:'7-10 days' };
+    res.json({ category, urgency, department, resolution: resMap[urgency],
+      summary: complaint.substring(0, 100) + (complaint.length > 100 ? '...' : ''), confidence: 0.92 });
   } catch (err) {
     res.status(500).json({ error: 'Classification failed' });
   }
@@ -708,8 +671,7 @@ app.get('/api/complaints/:id', async (req, res) => {
 app.patch('/api/complaints/:id', authenticate, adminOnly, async (req, res) => {
   try {
     const updated = await Complaint.findOneAndUpdate(
-      { id: req.params.id.toUpperCase() }, req.body, { new: true }
-    );
+      { id: req.params.id.toUpperCase() }, req.body, { new: true });
     if (!updated) return res.status(404).json({ error: 'Complaint not found' });
     res.json(updated);
   } catch (err) {
@@ -735,5 +697,5 @@ app.get('*', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 SEVAK running → http://localhost:${PORT}`);
-  console.log(`🤖 Model: ${GEMINI_MODEL} | temp: ${AI_CONFIG.temperature}`);
+  console.log(`🤖 Model: ${GEMINI_MODEL} | Free tier: ~1000 req/day`);
 });
